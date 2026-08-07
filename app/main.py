@@ -34,7 +34,9 @@ def home():
 from app.api.auth import router as auth_router
 from app.api.clientes import router as clientes_router
 from app.api.produtos import router as produtos_router
+from app.api.fornecedores import router as fornecedores_router
 
 app.include_router(auth_router)
 app.include_router(clientes_router)
 app.include_router(produtos_router)
+app.include_router(fornecedores_router)
