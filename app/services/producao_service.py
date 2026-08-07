@@ -1,35 +1,67 @@
-from decimal import Decimal
+"""
+Service de Produção — regras de negócio (COMMIT 0007).
 
-from app.models.producao import Producao
+Não lança HTTPException. Exceções de domínio são mapeadas na API.
+No futuro existirá um middleware/handler global de exceções.
+"""
+
+from decimal import Decimal
+from typing import Any
+
 from app.models.compra_concreto import CompraConcreto
 from app.models.produto import Produto
+from app.models.producao import Producao
+from app.repositories.producao_repository import ProducaoRepository
+from app.schemas.producao import ProducaoCreate
+from app.schemas.producao import ProducaoUpdate
 
 # estes dois modelos serão criados no próximo commit
 # from app.models.movimento_estoque import MovimentoEstoque
 # from app.models.funcionario_valor_produto import FuncionarioValorProduto
 
 
+class ProducaoNaoEncontrada(Exception):
+    """Produção ativa não encontrada."""
+
+
 class SaldoConcretoInsuficiente(Exception):
-    pass
+    """Saldo de concreto insuficiente para a produção."""
+
+
+class ProducaoDadosInvalidos(Exception):
+    """Referências inválidas para criação da produção."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
 
 
 class ProducaoService:
+    """Regras de negócio do cadastro de produção."""
 
-    def __init__(self, db):
+    def __init__(self, repository: ProducaoRepository) -> None:
+        """Inicializa o service com o repository."""
+        self.repository = repository
 
-        self.db = db
-
-    def criar(self, dados):
-
-        compra = self.db.get(
+    def criar(self, dados: ProducaoCreate) -> Producao:
+        """Cria produção, consome concreto da compra e valida saldo."""
+        compra = self.repository.db.get(
             CompraConcreto,
-            dados.compra_concreto_id
+            dados.compra_concreto_id,
         )
 
-        produto = self.db.get(
+        produto = self.repository.db.get(
             Produto,
-            dados.produto_id
+            dados.produto_id,
         )
+
+        if compra is None or not compra.ativo:
+            raise ProducaoDadosInvalidos(
+                "Compra de concreto não encontrada."
+            )
+
+        if produto is None or not produto.ativo:
+            raise ProducaoDadosInvalidos("Produto não encontrado.")
 
         concreto = (
             Decimal(dados.quantidade_produzida)
@@ -37,7 +69,6 @@ class ProducaoService:
         )
 
         if compra.saldo < concreto:
-
             raise SaldoConcretoInsuficiente(
                 "Saldo insuficiente de concreto."
             )
@@ -52,26 +83,15 @@ class ProducaoService:
         valor = Decimal("0.00")
 
         producao = Producao(
-
             data=dados.data,
-
             funcionario_id=dados.funcionario_id,
-
             produto_id=dados.produto_id,
-
             compra_concreto_id=dados.compra_concreto_id,
-
             quantidade_produzida=dados.quantidade_produzida,
-
             concreto_consumido=concreto,
-
             valor_producao=valor,
-
-            observacao=dados.observacao
-
+            observacao=dados.observacao,
         )
-
-        self.db.add(producao)
 
         #
         # Próximo commit:
@@ -80,8 +100,36 @@ class ProducaoService:
         # gerar pagamento funcionário
         #
 
-        self.db.commit()
+        return self.repository.criar(producao)
 
-        self.db.refresh(producao)
+    def listar(self, skip: int = 0, limit: int = 50) -> list[Producao]:
+        """Lista produções ativas com paginação."""
+        return self.repository.listar(skip=skip, limit=limit)
+
+    def buscar_por_id(self, producao_id: int) -> Producao:
+        """Retorna produção ativa por id ou levanta ProducaoNaoEncontrada."""
+        producao = self.repository.buscar_por_id(producao_id)
+
+        if producao is None:
+            raise ProducaoNaoEncontrada("Produção não encontrada.")
 
         return producao
+
+    def atualizar(
+        self,
+        producao_id: int,
+        dados: ProducaoUpdate,
+    ) -> Producao:
+        """Atualiza campos permitidos da produção (exclude_unset)."""
+        producao = self.buscar_por_id(producao_id)
+        campos: dict[str, Any] = dados.model_dump(exclude_unset=True)
+
+        for campo, valor in campos.items():
+            setattr(producao, campo, valor)
+
+        return self.repository.atualizar(producao)
+
+    def excluir(self, producao_id: int) -> Producao:
+        """Realiza exclusão lógica da produção (ativo = False)."""
+        producao = self.buscar_por_id(producao_id)
+        return self.repository.inativar(producao)

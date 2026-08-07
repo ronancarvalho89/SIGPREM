@@ -37,6 +37,7 @@ from app.api.produtos import router as produtos_router
 from app.api.fornecedores import router as fornecedores_router
 from app.api.funcionarios import router as funcionarios_router
 from app.api.compras_concreto import router as compras_concreto_router
+from app.api.producao import router as producao_router
 
 app.include_router(auth_router)
 app.include_router(clientes_router)
@@ -44,3 +45,4 @@ app.include_router(produtos_router)
 app.include_router(fornecedores_router)
 app.include_router(funcionarios_router)
 app.include_router(compras_concreto_router)
+app.include_router(producao_router)
