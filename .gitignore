@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Ambiente virtual
+.venv/
+venv/
+
+# Banco SQLite
+*.db
+*.sqlite3
+
+# Variáveis de ambiente
+.env
+.env.*
+
+# VS Code / Cursor
+.vscode/
+.cursor/
+
+# Logs
+*.log
+
+# Pytest
+.pytest_cache/
+
+# Ruff
+.ruff_cache/
+
+# Mypy
+.mypy_cache/
