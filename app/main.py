@@ -1,10 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.core.config import APP_NAME
+from app.database.seed import executar_seed
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    executar_seed()
+
+    yield
+
 
 app = FastAPI(
     title=APP_NAME,
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 
@@ -18,6 +31,10 @@ def home():
     }
 
 
+from app.api.auth import router as auth_router
 from app.api.clientes import router as clientes_router
+from app.api.produtos import router as produtos_router
 
+app.include_router(auth_router)
 app.include_router(clientes_router)
+app.include_router(produtos_router)
