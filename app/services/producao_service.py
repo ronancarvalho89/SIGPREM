@@ -1,5 +1,5 @@
 """
-Service de Produção — regras de negócio (COMMIT 0018).
+Service de Produção — regras de negócio (COMMIT 0022).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -13,11 +13,12 @@ from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.produto import Produto
 from app.models.producao import Producao
+from app.repositories.funcionario_valor_produto_repository import (
+    FuncionarioValorProdutoRepository,
+)
 from app.repositories.producao_repository import ProducaoRepository
 from app.schemas.producao import ProducaoCreate
 from app.schemas.producao import ProducaoUpdate
-
-# from app.models.funcionario_valor_produto import FuncionarioValorProduto
 
 
 class ProducaoNaoEncontrada(Exception):
@@ -36,18 +37,28 @@ class ProducaoDadosInvalidos(Exception):
         super().__init__(message)
 
 
+class ValorMaoObraNaoCadastrado(Exception):
+    """Não existe valor de mão de obra para o funcionário/produto."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
 class ProducaoService:
     """Regras de negócio do cadastro de produção."""
 
     def __init__(self, repository: ProducaoRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
+        self.valor_repository = FuncionarioValorProdutoRepository(
+            repository.db
+        )
 
     def criar(self, dados: ProducaoCreate) -> Producao:
         """
-        Cria produção, consome concreto e gera entrada de estoque.
-
-        Produção e movimento de estoque são gravados na mesma transação.
+        Cria produção, consome concreto, calcula mão de obra
+        e gera entrada de estoque na mesma transação.
         """
         compra = self.repository.db.get(
             CompraConcreto,
@@ -67,6 +78,17 @@ class ProducaoService:
         if produto is None or not produto.ativo:
             raise ProducaoDadosInvalidos("Produto não encontrado.")
 
+        valor_cadastro = self.valor_repository.buscar_por_funcionario_produto(
+            dados.funcionario_id,
+            dados.produto_id,
+        )
+
+        if valor_cadastro is None:
+            raise ValorMaoObraNaoCadastrado(
+                "Não existe valor de mão de obra cadastrado "
+                "para este funcionário e produto."
+            )
+
         concreto = (
             Decimal(dados.quantidade_produzida)
             * Decimal(produto.concreto_por_unidade)
@@ -79,12 +101,10 @@ class ProducaoService:
 
         compra.saldo -= concreto
 
-        #
-        # O cálculo do pagamento será substituído
-        # pela tabela FuncionarioValorProduto
-        #
-
-        valor = Decimal("0.00")
+        valor_mao_obra = (
+            Decimal(dados.quantidade_produzida)
+            * Decimal(valor_cadastro.valor)
+        )
 
         producao = Producao(
             data=dados.data,
@@ -93,7 +113,7 @@ class ProducaoService:
             compra_concreto_id=dados.compra_concreto_id,
             quantidade_produzida=dados.quantidade_produzida,
             concreto_consumido=concreto,
-            valor_producao=valor,
+            valor_producao=valor_mao_obra,
             observacao=dados.observacao,
         )
 
@@ -110,12 +130,6 @@ class ProducaoService:
         )
 
         self.repository.db.add(movimento)
-
-        #
-        # Próximo commit:
-        #
-        # gerar pagamento funcionário
-        #
 
         return self.repository.criar(producao)
 
