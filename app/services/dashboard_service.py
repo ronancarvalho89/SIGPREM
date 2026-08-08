@@ -1,5 +1,5 @@
 """
-Service de Dashboard — indicadores gerenciais (COMMIT 0041).
+Service de Dashboard — indicadores gerenciais (COMMIT 0042).
 
 Não lança HTTPException.
 Centraliza consolidações a partir dos Services existentes.
@@ -50,13 +50,25 @@ class DashboardService:
         """
         Consolida os indicadores gerenciais do dashboard.
 
-        Retorna fluxo financeiro, comercial, produção e estoque.
+        Retorna fluxo financeiro, comercial, produção, estoque e executivo.
         """
+        fluxo_financeiro = self.financeiro_service.fluxo_caixa()
+        comercial, clientes_atendidos = self._indicadores_comerciais()
+        producao = self._indicadores_producao()
+        estoque = self._indicadores_estoque()
+        executivo = self._indicadores_executivos(
+            fluxo_financeiro=fluxo_financeiro,
+            comercial=comercial,
+            estoque=estoque,
+            quantidade_clientes_atendidos=clientes_atendidos,
+        )
+
         return {
-            "fluxo_financeiro": self.financeiro_service.fluxo_caixa(),
-            "comercial": self._indicadores_comerciais(),
-            "producao": self._indicadores_producao(),
-            "estoque": self._indicadores_estoque(),
+            "fluxo_financeiro": fluxo_financeiro,
+            "comercial": comercial,
+            "producao": producao,
+            "estoque": estoque,
+            "executivo": executivo,
         }
 
     def obter_indicadores(self) -> dict[str, int]:
@@ -70,32 +82,40 @@ class DashboardService:
             "compras_concreto": self.repository.contar_compras_concreto(),
         }
 
-    def _indicadores_comerciais(self) -> dict[str, Any]:
-        """Consolida indicadores comerciais a partir do VendaService."""
+    def _indicadores_comerciais(self) -> tuple[dict[str, Any], int]:
+        """
+        Consolida indicadores comerciais a partir do VendaService.
+
+        Retorna o bloco comercial e a quantidade de clientes atendidos
+        (clientes distintos nas vendas), sem nova consulta.
+        """
         vendas = self._listar_todas_vendas()
         quantidade_vendas = len(vendas)
+        clientes_atendidos = len({venda.cliente_id for venda in vendas})
 
         if quantidade_vendas == 0:
             zero = Decimal("0")
-            return {
+            comercial = {
                 "quantidade_vendas": 0,
                 "valor_total_vendas": zero,
                 "ticket_medio": zero,
                 "maior_venda": zero,
                 "menor_venda": zero,
             }
+            return comercial, 0
 
         valores = [Decimal(str(venda.valor_total)) for venda in vendas]
         valor_total_vendas = sum(valores, Decimal("0"))
         ticket_medio = valor_total_vendas / Decimal(quantidade_vendas)
 
-        return {
+        comercial = {
             "quantidade_vendas": quantidade_vendas,
             "valor_total_vendas": valor_total_vendas,
             "ticket_medio": ticket_medio,
             "maior_venda": max(valores),
             "menor_venda": min(valores),
         }
+        return comercial, clientes_atendidos
 
     def _indicadores_producao(self) -> dict[str, Any]:
         """Consolida indicadores de produção a partir do ProducaoService."""
@@ -172,6 +192,38 @@ class DashboardService:
             "total_saidas": total_saidas,
             "saldo_total_estoque": saldo_total_estoque,
             "produtos_movimentados": len(produtos),
+        }
+
+    def _indicadores_executivos(
+        self,
+        fluxo_financeiro: dict[str, Any],
+        comercial: dict[str, Any],
+        estoque: dict[str, Any],
+        quantidade_clientes_atendidos: int,
+    ) -> dict[str, Any]:
+        """
+        Compõe indicadores executivos a partir dos blocos já consolidados.
+        """
+        faturamento_total = Decimal(str(comercial["valor_total_vendas"]))
+        custo_total = Decimal(str(fluxo_financeiro["total_saidas"]))
+        lucro_bruto = faturamento_total - custo_total
+
+        if faturamento_total == 0:
+            margem_bruta_percentual = Decimal("0")
+        else:
+            margem_bruta_percentual = (
+                lucro_bruto / faturamento_total
+            ) * Decimal("100")
+
+        return {
+            "faturamento_total": faturamento_total,
+            "custo_total": custo_total,
+            "lucro_bruto": lucro_bruto,
+            "margem_bruta_percentual": margem_bruta_percentual,
+            "quantidade_clientes_atendidos": quantidade_clientes_atendidos,
+            "quantidade_produtos_movimentados": estoque[
+                "produtos_movimentados"
+            ],
         }
 
     def _listar_todas_vendas(self) -> list[Venda]:
