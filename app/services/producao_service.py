@@ -1,5 +1,5 @@
 """
-Service de Produção — regras de negócio (COMMIT 0022).
+Service de Produção — regras de negócio (COMMIT 0033).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -11,6 +11,8 @@ from typing import Any
 from app.models.compra_concreto import CompraConcreto
 from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
+from app.models.movimento_financeiro import MovimentoFinanceiro
+from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.produto import Produto
 from app.models.producao import Producao
 from app.repositories.funcionario_valor_produto_repository import (
@@ -57,8 +59,8 @@ class ProducaoService:
 
     def criar(self, dados: ProducaoCreate) -> Producao:
         """
-        Cria produção, consome concreto, calcula mão de obra
-        e gera entrada de estoque na mesma transação.
+        Cria produção, consome concreto, calcula mão de obra,
+        gera entrada de estoque e custo financeiro na mesma transação.
         """
         compra = self.repository.db.get(
             CompraConcreto,
@@ -99,39 +101,59 @@ class ProducaoService:
                 "Saldo insuficiente de concreto."
             )
 
-        compra.saldo -= concreto
-
         valor_mao_obra = (
             Decimal(dados.quantidade_produzida)
             * Decimal(valor_cadastro.valor)
         )
 
-        producao = Producao(
-            data=dados.data,
-            funcionario_id=dados.funcionario_id,
-            produto_id=dados.produto_id,
-            compra_concreto_id=dados.compra_concreto_id,
-            quantidade_produzida=dados.quantidade_produzida,
-            concreto_consumido=concreto,
-            valor_producao=valor_mao_obra,
-            observacao=dados.observacao,
-        )
+        try:
+            compra.saldo -= concreto
 
-        self.repository.db.add(producao)
-        self.repository.db.flush()
+            producao = Producao(
+                data=dados.data,
+                funcionario_id=dados.funcionario_id,
+                produto_id=dados.produto_id,
+                compra_concreto_id=dados.compra_concreto_id,
+                quantidade_produzida=dados.quantidade_produzida,
+                concreto_consumido=concreto,
+                valor_producao=valor_mao_obra,
+                observacao=dados.observacao,
+            )
 
-        movimento = MovimentoEstoque(
-            data=producao.data,
-            produto_id=producao.produto_id,
-            quantidade=producao.quantidade_produzida,
-            tipo=TipoMovimentoEstoque.ENTRADA,
-            producao_id=producao.id,
-            observacao="Entrada automática gerada pela produção.",
-        )
+            self.repository.db.add(producao)
+            self.repository.db.flush()
 
-        self.repository.db.add(movimento)
+            movimento_estoque = MovimentoEstoque(
+                data=producao.data,
+                produto_id=producao.produto_id,
+                quantidade=producao.quantidade_produzida,
+                tipo=TipoMovimentoEstoque.ENTRADA,
+                producao_id=producao.id,
+                observacao="Entrada automática gerada pela produção.",
+            )
 
-        return self.repository.criar(producao)
+            self.repository.db.add(movimento_estoque)
+
+            # Tipo disponível no model: PRODUCAO (custo de produção / mão de obra).
+            # Model sem funcionario_id/producao_id — referências na observação.
+            movimento_financeiro = MovimentoFinanceiro(
+                tipo=TipoMovimentoFinanceiro.PRODUCAO,
+                data_movimento=producao.data,
+                valor=producao.valor_producao,
+                descricao="Custo de produção",
+                observacao=(
+                    f"Produção {producao.id}. "
+                    f"Funcionário ID {producao.funcionario_id}."
+                ),
+            )
+
+            self.repository.db.add(movimento_financeiro)
+
+            return self.repository.criar(producao)
+
+        except Exception:
+            self.repository.db.rollback()
+            raise
 
     def listar(self, skip: int = 0, limit: int = 50) -> list[Producao]:
         """Lista produções ativas com paginação."""
