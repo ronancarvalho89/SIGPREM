@@ -1,5 +1,5 @@
 """
-Service de Movimento Financeiro — regras de negócio (COMMIT 0035).
+Service de Movimento Financeiro — regras de negócio (COMMIT 0036).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -24,6 +24,14 @@ class MovimentoFinanceiroNaoEncontrado(Exception):
 
 class MovimentoFinanceiroService:
     """Regras de negócio do cadastro de movimentos financeiros."""
+
+    _TIPOS_ENTRADA = frozenset({TipoMovimentoFinanceiro.VENDA})
+    _TIPOS_SAIDA = frozenset(
+        {
+            TipoMovimentoFinanceiro.COMPRA_CONCRETO,
+            TipoMovimentoFinanceiro.PRODUCAO,
+        }
+    )
 
     def __init__(self, repository: MovimentoFinanceiroRepository) -> None:
         """Inicializa o service com o repository."""
@@ -97,3 +105,44 @@ class MovimentoFinanceiroService:
         """Realiza exclusão lógica do movimento (ativo = False)."""
         movimento = self.buscar_por_id(movimento_id)
         return self.repository.excluir(movimento)
+
+    def fluxo_caixa(self) -> dict[str, Any]:
+        """
+        Consolida o fluxo de caixa a partir dos movimentos ativos.
+
+        Retorna totais de entradas, saídas, saldo, quantidade de
+        lançamentos e total por tipo. Não persiste dados.
+        """
+        movimentos = self._listar_ativos()
+
+        total_entradas = Decimal("0")
+        total_saidas = Decimal("0")
+        total_por_tipo: dict[str, Decimal] = {
+            tipo.value: Decimal("0") for tipo in TipoMovimentoFinanceiro
+        }
+
+        for movimento in movimentos:
+            valor = Decimal(str(movimento.valor))
+            tipo = movimento.tipo
+            total_por_tipo[tipo.value] += valor
+
+            if tipo in self._TIPOS_ENTRADA:
+                total_entradas += valor
+            elif tipo in self._TIPOS_SAIDA:
+                total_saidas += valor
+
+        return {
+            "total_entradas": total_entradas,
+            "total_saidas": total_saidas,
+            "saldo": total_entradas - total_saidas,
+            "quantidade_lancamentos": len(movimentos),
+            "total_por_tipo": total_por_tipo,
+        }
+
+    def _listar_ativos(self) -> list[MovimentoFinanceiro]:
+        """Lista todos os movimentos financeiros ativos (sem paginação)."""
+        return (
+            self.repository.db.query(MovimentoFinanceiro)
+            .filter(MovimentoFinanceiro.ativo.is_(True))
+            .all()
+        )
