@@ -1,5 +1,5 @@
 """
-Service de Venda — regras de negócio (COMMIT 0031).
+Service de Venda — regras de negócio (COMMIT 0032).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -11,6 +11,8 @@ from typing import Optional
 from uuid import UUID
 
 from app.models.item_venda import ItemVenda
+from app.models.movimento_estoque import MovimentoEstoque
+from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.movimento_financeiro import MovimentoFinanceiro
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.venda import Venda
@@ -31,6 +33,14 @@ class VendaDuplicada(Exception):
         super().__init__(message)
 
 
+class EstoqueInsuficiente(Exception):
+    """Saldo de estoque insuficiente para a venda."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
 class VendaService:
     """Regras de negócio do cadastro de vendas."""
 
@@ -44,7 +54,8 @@ class VendaService:
         itens: Optional[list[Any]] = None,
     ) -> Venda:
         """
-        Cria venda, ItemVenda e MovimentoFinanceiro na mesma transação.
+        Cria venda, ItemVenda, baixa de estoque e MovimentoFinanceiro
+        na mesma transação.
         """
         self._validar_numero_unico(dados.numero)
 
@@ -57,6 +68,7 @@ class VendaService:
             self.repository.db.flush()
 
             total_venda = Decimal("0")
+            itens_criados: list[ItemVenda] = []
 
             for item_dados in itens_venda:
                 produto_id, quantidade, valor_unitario = (
@@ -72,10 +84,13 @@ class VendaService:
                     valor_total=valor_total_item,
                 )
                 self.repository.db.add(item)
+                itens_criados.append(item)
                 total_venda += valor_total_item
 
             if itens_venda:
                 venda.valor_total = total_venda
+
+            self._baixar_estoque(venda, itens_criados)
 
             movimento = MovimentoFinanceiro(
                 tipo=TipoMovimentoFinanceiro.VENDA,
@@ -173,3 +188,62 @@ class VendaService:
         quantidade = Decimal(str(item_dados.quantidade))
         valor_unitario = Decimal(str(item_dados.valor_unitario))
         return produto_id, quantidade, valor_unitario
+
+    def _calcular_saldo_estoque(self, produto_id: int) -> Decimal:
+        """Calcula saldo de estoque do produto (entradas - saídas)."""
+        movimentos = (
+            self.repository.db.query(MovimentoEstoque)
+            .filter(
+                MovimentoEstoque.produto_id == produto_id,
+                MovimentoEstoque.ativo.is_(True),
+            )
+            .all()
+        )
+
+        saldo = Decimal("0")
+
+        for movimento in movimentos:
+            if movimento.tipo == TipoMovimentoEstoque.ENTRADA:
+                saldo += Decimal(str(movimento.quantidade))
+            elif movimento.tipo == TipoMovimentoEstoque.SAIDA:
+                saldo -= Decimal(str(movimento.quantidade))
+
+        return saldo
+
+    def _baixar_estoque(
+        self,
+        venda: Venda,
+        itens: list[ItemVenda],
+    ) -> None:
+        """
+        Valida saldo e gera MovimentoEstoque SAIDA para cada item.
+        """
+        reservado: dict[int, Decimal] = {}
+
+        for item in itens:
+            saldo = self._calcular_saldo_estoque(item.produto_id)
+            saldo_disponivel = saldo - reservado.get(
+                item.produto_id,
+                Decimal("0"),
+            )
+
+            if saldo_disponivel < item.quantidade:
+                raise EstoqueInsuficiente(
+                    f"Estoque insuficiente para o produto "
+                    f"{item.produto_id}. "
+                    f"Saldo disponível: {saldo_disponivel}."
+                )
+
+            movimento_estoque = MovimentoEstoque(
+                data=venda.data_venda,
+                produto_id=item.produto_id,
+                quantidade=item.quantidade,
+                tipo=TipoMovimentoEstoque.SAIDA,
+                observacao=f"Venda {venda.numero}",
+            )
+            self.repository.db.add(movimento_estoque)
+
+            reservado[item.produto_id] = (
+                reservado.get(item.produto_id, Decimal("0"))
+                + Decimal(str(item.quantidade))
+            )
