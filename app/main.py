@@ -41,6 +41,9 @@ from app.api.producao import router as producao_router
 from app.api.dashboard import router as dashboard_router
 from app.api.vendas import router as vendas_router
 from app.api.movimentos_estoque import router as movimentos_estoque_router
+from app.api.funcionarios_valor_produto import (
+    router as funcionarios_valor_produto_router,
+)
 
 app.include_router(auth_router)
 app.include_router(clientes_router)
@@ -52,3 +55,4 @@ app.include_router(producao_router)
 app.include_router(dashboard_router)
 app.include_router(vendas_router)
 app.include_router(movimentos_estoque_router)
+app.include_router(funcionarios_valor_produto_router)
