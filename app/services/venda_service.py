@@ -1,5 +1,5 @@
 """
-Service de Venda — regras de negócio (COMMIT 0032).
+Service de Venda — regras de negócio (COMMIT 0034).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -16,9 +16,13 @@ from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.movimento_financeiro import MovimentoFinanceiro
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.venda import Venda
+from app.repositories.movimento_estoque_repository import (
+    MovimentoEstoqueRepository,
+)
 from app.repositories.venda_repository import VendaRepository
 from app.schemas.venda import VendaCreate
 from app.schemas.venda import VendaUpdate
+from app.services.movimento_estoque_service import MovimentoEstoqueService
 
 
 class VendaNaoEncontrada(Exception):
@@ -47,6 +51,9 @@ class VendaService:
     def __init__(self, repository: VendaRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
+        self.estoque_service = MovimentoEstoqueService(
+            MovimentoEstoqueRepository(repository.db)
+        )
 
     def criar(
         self,
@@ -189,27 +196,6 @@ class VendaService:
         valor_unitario = Decimal(str(item_dados.valor_unitario))
         return produto_id, quantidade, valor_unitario
 
-    def _calcular_saldo_estoque(self, produto_id: int) -> Decimal:
-        """Calcula saldo de estoque do produto (entradas - saídas)."""
-        movimentos = (
-            self.repository.db.query(MovimentoEstoque)
-            .filter(
-                MovimentoEstoque.produto_id == produto_id,
-                MovimentoEstoque.ativo.is_(True),
-            )
-            .all()
-        )
-
-        saldo = Decimal("0")
-
-        for movimento in movimentos:
-            if movimento.tipo == TipoMovimentoEstoque.ENTRADA:
-                saldo += Decimal(str(movimento.quantidade))
-            elif movimento.tipo == TipoMovimentoEstoque.SAIDA:
-                saldo -= Decimal(str(movimento.quantidade))
-
-        return saldo
-
     def _baixar_estoque(
         self,
         venda: Venda,
@@ -221,7 +207,7 @@ class VendaService:
         reservado: dict[int, Decimal] = {}
 
         for item in itens:
-            saldo = self._calcular_saldo_estoque(item.produto_id)
+            saldo = self.estoque_service.saldo_produto(item.produto_id)
             saldo_disponivel = saldo - reservado.get(
                 item.produto_id,
                 Decimal("0"),
