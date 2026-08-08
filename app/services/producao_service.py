@@ -1,5 +1,5 @@
 """
-Service de Produção — regras de negócio (COMMIT 0007).
+Service de Produção — regras de negócio (COMMIT 0018).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -9,14 +9,14 @@ from decimal import Decimal
 from typing import Any
 
 from app.models.compra_concreto import CompraConcreto
+from app.models.movimento_estoque import MovimentoEstoque
+from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.produto import Produto
 from app.models.producao import Producao
 from app.repositories.producao_repository import ProducaoRepository
 from app.schemas.producao import ProducaoCreate
 from app.schemas.producao import ProducaoUpdate
 
-# estes dois modelos serão criados no próximo commit
-# from app.models.movimento_estoque import MovimentoEstoque
 # from app.models.funcionario_valor_produto import FuncionarioValorProduto
 
 
@@ -44,7 +44,11 @@ class ProducaoService:
         self.repository = repository
 
     def criar(self, dados: ProducaoCreate) -> Producao:
-        """Cria produção, consome concreto da compra e valida saldo."""
+        """
+        Cria produção, consome concreto e gera entrada de estoque.
+
+        Produção e movimento de estoque são gravados na mesma transação.
+        """
         compra = self.repository.db.get(
             CompraConcreto,
             dados.compra_concreto_id,
@@ -93,10 +97,23 @@ class ProducaoService:
             observacao=dados.observacao,
         )
 
+        self.repository.db.add(producao)
+        self.repository.db.flush()
+
+        movimento = MovimentoEstoque(
+            data=producao.data,
+            produto_id=producao.produto_id,
+            quantidade=producao.quantidade_produzida,
+            tipo=TipoMovimentoEstoque.ENTRADA,
+            producao_id=producao.id,
+            observacao="Entrada automática gerada pela produção.",
+        )
+
+        self.repository.db.add(movimento)
+
         #
         # Próximo commit:
         #
-        # gerar entrada estoque
         # gerar pagamento funcionário
         #
 
