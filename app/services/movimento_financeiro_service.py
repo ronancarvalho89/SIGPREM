@@ -1,5 +1,5 @@
 """
-Service de Movimento Financeiro — regras de negócio (COMMIT 0036).
+Service de Movimento Financeiro — regras de negócio (COMMIT 0045).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -114,7 +114,29 @@ class MovimentoFinanceiroService:
         lançamentos e total por tipo. Não persiste dados.
         """
         movimentos = self.repository.listar_ativos()
+        return self._consolidar_fluxo(movimentos)
 
+    def fluxo_caixa_periodo(
+        self,
+        data_inicial: date,
+        data_final: date,
+    ) -> dict[str, Any]:
+        """
+        Consolida o fluxo de caixa apenas com movimentos do período.
+
+        Retorna a mesma estrutura de fluxo_caixa().
+        """
+        movimentos = self.repository.listar_ativos_por_periodo(
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
+        return self._consolidar_fluxo(movimentos)
+
+    def _consolidar_fluxo(
+        self,
+        movimentos: list[MovimentoFinanceiro],
+    ) -> dict[str, Any]:
+        """Consolida entradas, saídas, saldo e totais por tipo."""
         total_entradas = Decimal("0")
         total_saidas = Decimal("0")
         total_por_tipo: dict[str, Decimal] = {

@@ -1,10 +1,11 @@
 """
-Repository de Movimento Financeiro — acesso a dados (COMMIT 0024).
+Repository de Movimento Financeiro — acesso a dados (COMMIT 0045).
 
 Responsável exclusivamente por operações de persistência.
 Não contém regras de negócio.
 """
 
+from datetime import date
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -49,6 +50,22 @@ class MovimentoFinanceiroRepository:
         return (
             self.db.query(MovimentoFinanceiro)
             .filter(MovimentoFinanceiro.ativo.is_(True))
+            .all()
+        )
+
+    def listar_ativos_por_periodo(
+        self,
+        data_inicial: date,
+        data_final: date,
+    ) -> list[MovimentoFinanceiro]:
+        """Lista movimentos ativos no intervalo de datas (inclusivo)."""
+        return (
+            self.db.query(MovimentoFinanceiro)
+            .filter(
+                MovimentoFinanceiro.ativo.is_(True),
+                MovimentoFinanceiro.data_movimento >= data_inicial,
+                MovimentoFinanceiro.data_movimento <= data_final,
+            )
             .all()
         )
 
