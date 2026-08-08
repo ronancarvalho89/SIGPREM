@@ -3,6 +3,8 @@ from jose import JWTError
 from app.core.security import create_access_token
 from app.core.security import decode_access_token
 from app.core.security import verify_password
+from app.models.usuario import Usuario
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.auth import LoginRequest
 from app.schemas.auth import TokenResponse
 
@@ -17,7 +19,7 @@ class TokenInvalido(Exception):
 
 class AuthService:
 
-    def __init__(self, repository):
+    def __init__(self, repository: UsuarioRepository) -> None:
 
         self.repository = repository
 
@@ -41,7 +43,7 @@ class AuthService:
             access_token=token
         )
 
-    def obter_usuario_por_token(self, token: str):
+    def obter_usuario_por_token(self, token: str) -> Usuario:
 
         try:
 

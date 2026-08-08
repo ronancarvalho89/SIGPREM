@@ -104,7 +104,7 @@ class MovimentoFinanceiroService:
     def excluir(self, movimento_id: int) -> MovimentoFinanceiro:
         """Realiza exclusão lógica do movimento (ativo = False)."""
         movimento = self.buscar_por_id(movimento_id)
-        return self.repository.excluir(movimento)
+        return self.repository.inativar(movimento)
 
     def fluxo_caixa(self) -> dict[str, Any]:
         """
@@ -113,7 +113,7 @@ class MovimentoFinanceiroService:
         Retorna totais de entradas, saídas, saldo, quantidade de
         lançamentos e total por tipo. Não persiste dados.
         """
-        movimentos = self._listar_ativos()
+        movimentos = self.repository.listar_ativos()
 
         total_entradas = Decimal("0")
         total_saidas = Decimal("0")
@@ -138,11 +138,3 @@ class MovimentoFinanceiroService:
             "quantidade_lancamentos": len(movimentos),
             "total_por_tipo": total_por_tipo,
         }
-
-    def _listar_ativos(self) -> list[MovimentoFinanceiro]:
-        """Lista todos os movimentos financeiros ativos (sem paginação)."""
-        return (
-            self.repository.db.query(MovimentoFinanceiro)
-            .filter(MovimentoFinanceiro.ativo.is_(True))
-            .all()
-        )

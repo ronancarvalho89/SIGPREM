@@ -54,12 +54,36 @@ class VendaService:
     def __init__(self, repository: VendaRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
-        self.estoque_service = MovimentoEstoqueService(
-            MovimentoEstoqueRepository(repository.db)
-        )
-        self.financeiro_service = MovimentoFinanceiroService(
-            MovimentoFinanceiroRepository(repository.db)
-        )
+        self._estoque_service: Optional[MovimentoEstoqueService] = None
+        self._financeiro_service: Optional[MovimentoFinanceiroService] = None
+
+    @property
+    def estoque_service(self) -> MovimentoEstoqueService:
+        """Service de estoque (lazy) compartilhando a mesma sessão."""
+        if self._estoque_service is None:
+            self._estoque_service = MovimentoEstoqueService(
+                MovimentoEstoqueRepository(self.repository.db)
+            )
+        return self._estoque_service
+
+    @estoque_service.setter
+    def estoque_service(self, value: MovimentoEstoqueService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._estoque_service = value
+
+    @property
+    def financeiro_service(self) -> MovimentoFinanceiroService:
+        """Service financeiro (lazy) compartilhando a mesma sessão."""
+        if self._financeiro_service is None:
+            self._financeiro_service = MovimentoFinanceiroService(
+                MovimentoFinanceiroRepository(self.repository.db)
+            )
+        return self._financeiro_service
+
+    @financeiro_service.setter
+    def financeiro_service(self, value: MovimentoFinanceiroService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._financeiro_service = value
 
     def criar(
         self,

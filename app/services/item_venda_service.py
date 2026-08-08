@@ -63,4 +63,4 @@ class ItemVendaService:
     def excluir(self, item_id: int) -> ItemVenda:
         """Realiza exclusão lógica do item (ativo = False)."""
         item = self.buscar_por_id(item_id)
-        return self.repository.excluir(item)
+        return self.repository.inativar(item)

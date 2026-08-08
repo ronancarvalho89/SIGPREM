@@ -77,14 +77,7 @@ class MovimentoEstoqueService:
 
         saldo = entradas - saídas
         """
-        movimentos = (
-            self.repository.db.query(MovimentoEstoque)
-            .filter(
-                MovimentoEstoque.produto_id == produto_id,
-                MovimentoEstoque.ativo.is_(True),
-            )
-            .all()
-        )
+        movimentos = self.repository.listar_por_produto(produto_id)
 
         saldo = Decimal("0")
 

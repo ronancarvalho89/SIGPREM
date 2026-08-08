@@ -1,5 +1,5 @@
 """
-Service de Dashboard — indicadores gerenciais (COMMIT 0042).
+Service de Dashboard — indicadores gerenciais (COMMIT 0043).
 
 Não lança HTTPException.
 Centraliza consolidações a partir dos Services existentes.
@@ -7,6 +7,9 @@ Centraliza consolidações a partir dos Services existentes.
 
 from decimal import Decimal
 from typing import Any
+from typing import Callable
+from typing import Optional
+from typing import TypeVar
 
 from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
@@ -26,25 +29,71 @@ from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 from app.services.producao_service import ProducaoService
 from app.services.venda_service import VendaService
 
+T = TypeVar("T")
+
 
 class DashboardService:
     """Centraliza indicadores gerenciais do ERP."""
 
     def __init__(self, repository: DashboardRepository) -> None:
-        """Inicializa o service e os services dependentes."""
+        """Inicializa o service e os services dependentes (lazy)."""
         self.repository = repository
-        self.financeiro_service = MovimentoFinanceiroService(
-            MovimentoFinanceiroRepository(repository.db)
-        )
-        self.venda_service = VendaService(
-            VendaRepository(repository.db)
-        )
-        self.producao_service = ProducaoService(
-            ProducaoRepository(repository.db)
-        )
-        self.estoque_service = MovimentoEstoqueService(
-            MovimentoEstoqueRepository(repository.db)
-        )
+        self._financeiro_service: Optional[MovimentoFinanceiroService] = None
+        self._venda_service: Optional[VendaService] = None
+        self._producao_service: Optional[ProducaoService] = None
+        self._estoque_service: Optional[MovimentoEstoqueService] = None
+
+    @property
+    def financeiro_service(self) -> MovimentoFinanceiroService:
+        """Service financeiro (lazy)."""
+        if self._financeiro_service is None:
+            self._financeiro_service = MovimentoFinanceiroService(
+                MovimentoFinanceiroRepository(self.repository.db)
+            )
+        return self._financeiro_service
+
+    @financeiro_service.setter
+    def financeiro_service(self, value: MovimentoFinanceiroService) -> None:
+        self._financeiro_service = value
+
+    @property
+    def venda_service(self) -> VendaService:
+        """Service de vendas (lazy)."""
+        if self._venda_service is None:
+            self._venda_service = VendaService(
+                VendaRepository(self.repository.db)
+            )
+        return self._venda_service
+
+    @venda_service.setter
+    def venda_service(self, value: VendaService) -> None:
+        self._venda_service = value
+
+    @property
+    def producao_service(self) -> ProducaoService:
+        """Service de produção (lazy)."""
+        if self._producao_service is None:
+            self._producao_service = ProducaoService(
+                ProducaoRepository(self.repository.db)
+            )
+        return self._producao_service
+
+    @producao_service.setter
+    def producao_service(self, value: ProducaoService) -> None:
+        self._producao_service = value
+
+    @property
+    def estoque_service(self) -> MovimentoEstoqueService:
+        """Service de estoque (lazy)."""
+        if self._estoque_service is None:
+            self._estoque_service = MovimentoEstoqueService(
+                MovimentoEstoqueRepository(self.repository.db)
+            )
+        return self._estoque_service
+
+    @estoque_service.setter
+    def estoque_service(self, value: MovimentoEstoqueService) -> None:
+        self._estoque_service = value
 
     def dashboard(self) -> dict[str, Any]:
         """
@@ -178,13 +227,8 @@ class DashboardService:
             elif movimento.tipo == TipoMovimentoEstoque.SAIDA:
                 total_saidas += quantidade
 
-        saldo_total_estoque = sum(
-            (
-                self.estoque_service.saldo_produto(produto_id)
-                for produto_id in produtos
-            ),
-            Decimal("0"),
-        )
+        # Equivale à soma de saldo_produto por item, sem consultas extras.
+        saldo_total_estoque = total_entradas - total_saidas
 
         return {
             "quantidade_movimentos": quantidade_movimentos,
@@ -238,9 +282,12 @@ class DashboardService:
         """Lista todos os movimentos ativos via MovimentoEstoqueService."""
         return self._listar_paginado(self.estoque_service.listar)
 
-    def _listar_paginado(self, listar) -> list[Any]:
+    def _listar_paginado(
+        self,
+        listar: Callable[..., list[T]],
+    ) -> list[T]:
         """Percorre listagens paginadas de um service até o fim."""
-        itens: list[Any] = []
+        itens: list[T] = []
         skip = 0
         limit = 100
 

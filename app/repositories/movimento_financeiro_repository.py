@@ -44,6 +44,14 @@ class MovimentoFinanceiroRepository:
             .all()
         )
 
+    def listar_ativos(self) -> list[MovimentoFinanceiro]:
+        """Lista todos os movimentos financeiros ativos (sem paginação)."""
+        return (
+            self.db.query(MovimentoFinanceiro)
+            .filter(MovimentoFinanceiro.ativo.is_(True))
+            .all()
+        )
+
     def buscar_por_id(
         self,
         movimento_id: int,
@@ -67,7 +75,7 @@ class MovimentoFinanceiroRepository:
         self.db.refresh(movimento)
         return movimento
 
-    def excluir(
+    def inativar(
         self,
         movimento: MovimentoFinanceiro,
     ) -> MovimentoFinanceiro:

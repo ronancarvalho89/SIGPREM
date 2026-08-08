@@ -37,9 +37,21 @@ class CompraConcretoService:
     def __init__(self, repository: CompraConcretoRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
-        self.financeiro_service = MovimentoFinanceiroService(
-            MovimentoFinanceiroRepository(repository.db)
-        )
+        self._financeiro_service: Optional[MovimentoFinanceiroService] = None
+
+    @property
+    def financeiro_service(self) -> MovimentoFinanceiroService:
+        """Service financeiro (lazy) compartilhando a mesma sessão."""
+        if self._financeiro_service is None:
+            self._financeiro_service = MovimentoFinanceiroService(
+                MovimentoFinanceiroRepository(self.repository.db)
+            )
+        return self._financeiro_service
+
+    @financeiro_service.setter
+    def financeiro_service(self, value: MovimentoFinanceiroService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._financeiro_service = value
 
     def criar(self, dados: CompraConcretoCreate) -> CompraConcreto:
         """

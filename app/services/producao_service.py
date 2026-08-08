@@ -7,6 +7,7 @@ No futuro existirá um middleware/handler global de exceções.
 
 from decimal import Decimal
 from typing import Any
+from typing import Optional
 
 from app.models.compra_concreto import CompraConcreto
 from app.models.movimento_estoque import MovimentoEstoque
@@ -33,6 +34,10 @@ class ProducaoNaoEncontrada(Exception):
 class SaldoConcretoInsuficiente(Exception):
     """Saldo de concreto insuficiente para a produção."""
 
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
 
 class ProducaoDadosInvalidos(Exception):
     """Referências inválidas para criação da produção."""
@@ -56,12 +61,41 @@ class ProducaoService:
     def __init__(self, repository: ProducaoRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
-        self.valor_repository = FuncionarioValorProdutoRepository(
-            repository.db
-        )
-        self.financeiro_service = MovimentoFinanceiroService(
-            MovimentoFinanceiroRepository(repository.db)
-        )
+        self._valor_repository: Optional[
+            FuncionarioValorProdutoRepository
+        ] = None
+        self._financeiro_service: Optional[MovimentoFinanceiroService] = None
+
+    @property
+    def valor_repository(self) -> FuncionarioValorProdutoRepository:
+        """Repository de valor mão de obra (lazy)."""
+        if self._valor_repository is None:
+            self._valor_repository = FuncionarioValorProdutoRepository(
+                self.repository.db
+            )
+        return self._valor_repository
+
+    @valor_repository.setter
+    def valor_repository(
+        self,
+        value: FuncionarioValorProdutoRepository,
+    ) -> None:
+        """Permite injeção/substituição em testes."""
+        self._valor_repository = value
+
+    @property
+    def financeiro_service(self) -> MovimentoFinanceiroService:
+        """Service financeiro (lazy) compartilhando a mesma sessão."""
+        if self._financeiro_service is None:
+            self._financeiro_service = MovimentoFinanceiroService(
+                MovimentoFinanceiroRepository(self.repository.db)
+            )
+        return self._financeiro_service
+
+    @financeiro_service.setter
+    def financeiro_service(self, value: MovimentoFinanceiroService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._financeiro_service = value
 
     def criar(self, dados: ProducaoCreate) -> Producao:
         """

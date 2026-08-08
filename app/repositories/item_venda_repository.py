@@ -58,7 +58,7 @@ class ItemVendaRepository:
         self.db.refresh(item)
         return item
 
-    def excluir(self, item: ItemVenda) -> ItemVenda:
+    def inativar(self, item: ItemVenda) -> ItemVenda:
         """
         Realiza exclusão lógica (soft delete).
 

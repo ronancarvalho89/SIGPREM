@@ -55,6 +55,20 @@ class MovimentoEstoqueRepository:
             .first()
         )
 
+    def listar_por_produto(
+        self,
+        produto_id: int,
+    ) -> list[MovimentoEstoque]:
+        """Lista movimentos ativos de um produto."""
+        return (
+            self.db.query(MovimentoEstoque)
+            .filter(
+                MovimentoEstoque.produto_id == produto_id,
+                MovimentoEstoque.ativo.is_(True),
+            )
+            .all()
+        )
+
     def atualizar(self, movimento: MovimentoEstoque) -> MovimentoEstoque:
         """Persiste alterações em um movimento existente."""
         self.db.commit()
