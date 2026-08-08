@@ -1,14 +1,18 @@
 """
-Service de Venda — regras de negócio (COMMIT 0011).
+Service de Venda — regras de negócio (COMMIT 0031).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from decimal import Decimal
 from typing import Any
 from typing import Optional
 from uuid import UUID
 
+from app.models.item_venda import ItemVenda
+from app.models.movimento_financeiro import MovimentoFinanceiro
+from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.venda import Venda
 from app.repositories.venda_repository import VendaRepository
 from app.schemas.venda import VendaCreate
@@ -34,12 +38,63 @@ class VendaService:
         """Inicializa o service com o repository."""
         self.repository = repository
 
-    def criar(self, dados: VendaCreate) -> Venda:
-        """Cria uma nova venda validando unicidade do número."""
+    def criar(
+        self,
+        dados: VendaCreate,
+        itens: Optional[list[Any]] = None,
+    ) -> Venda:
+        """
+        Cria venda, ItemVenda e MovimentoFinanceiro na mesma transação.
+        """
         self._validar_numero_unico(dados.numero)
 
+        itens_venda = self._resolver_itens(dados, itens)
+
         venda = Venda(**dados.model_dump())
-        return self.repository.criar(venda)
+
+        try:
+            self.repository.db.add(venda)
+            self.repository.db.flush()
+
+            total_venda = Decimal("0")
+
+            for item_dados in itens_venda:
+                produto_id, quantidade, valor_unitario = (
+                    self._extrair_campos_item(item_dados)
+                )
+                valor_total_item = quantidade * valor_unitario
+
+                item = ItemVenda(
+                    venda_id=venda.id,
+                    produto_id=produto_id,
+                    quantidade=quantidade,
+                    valor_unitario=valor_unitario,
+                    valor_total=valor_total_item,
+                )
+                self.repository.db.add(item)
+                total_venda += valor_total_item
+
+            if itens_venda:
+                venda.valor_total = total_venda
+
+            movimento = MovimentoFinanceiro(
+                tipo=TipoMovimentoFinanceiro.VENDA,
+                data_movimento=venda.data_venda,
+                valor=venda.valor_total,
+                descricao="Venda",
+                observacao=(
+                    f"Cliente ID {venda.cliente_id}. "
+                    f"Venda ID {venda.id}."
+                ),
+            )
+
+            self.repository.db.add(movimento)
+
+            return self.repository.criar(venda)
+
+        except Exception:
+            self.repository.db.rollback()
+            raise
 
     def listar(self, skip: int = 0, limit: int = 50) -> list[Venda]:
         """Lista vendas ativas com paginação."""
@@ -87,3 +142,34 @@ class VendaService:
             raise VendaDuplicada(
                 "Já existe uma venda cadastrada com este número."
             )
+
+    def _resolver_itens(
+        self,
+        dados: VendaCreate,
+        itens: Optional[list[Any]],
+    ) -> list[Any]:
+        """Resolve a coleção de itens recebida no fluxo de criação."""
+        if itens is not None:
+            return list(itens)
+
+        itens_dados = getattr(dados, "itens", None)
+        if itens_dados is None:
+            return []
+
+        return list(itens_dados)
+
+    def _extrair_campos_item(
+        self,
+        item_dados: Any,
+    ) -> tuple[int, Decimal, Decimal]:
+        """Extrai produto_id, quantidade e valor_unitario de um item."""
+        if isinstance(item_dados, dict):
+            produto_id = int(item_dados["produto_id"])
+            quantidade = Decimal(str(item_dados["quantidade"]))
+            valor_unitario = Decimal(str(item_dados["valor_unitario"]))
+            return produto_id, quantidade, valor_unitario
+
+        produto_id = int(item_dados.produto_id)
+        quantidade = Decimal(str(item_dados.quantidade))
+        valor_unitario = Decimal(str(item_dados.valor_unitario))
+        return produto_id, quantidade, valor_unitario

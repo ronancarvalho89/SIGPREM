@@ -1,5 +1,5 @@
 """
-Service de Compra de Concreto — regras de negócio (COMMIT 0006).
+Service de Compra de Concreto — regras de negócio (COMMIT 0026).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -9,6 +9,8 @@ from typing import Any
 from typing import Optional
 
 from app.models.compra_concreto import CompraConcreto
+from app.models.movimento_financeiro import MovimentoFinanceiro
+from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.repositories.compra_concreto_repository import CompraConcretoRepository
 from app.schemas.compra_concreto import CompraConcretoCreate
 from app.schemas.compra_concreto import CompraConcretoUpdate
@@ -34,7 +36,9 @@ class CompraConcretoService:
         self.repository = repository
 
     def criar(self, dados: CompraConcretoCreate) -> CompraConcreto:
-        """Cria uma nova compra validando unicidade da nota fiscal."""
+        """
+        Cria compra e gera MovimentoFinanceiro na mesma transação.
+        """
         self._validar_nota_fiscal_unica(dados.nota_fiscal)
 
         compra = CompraConcreto(
@@ -48,7 +52,28 @@ class CompraConcretoService:
             observacao=dados.observacao,
         )
 
-        return self.repository.criar(compra)
+        try:
+            self.repository.db.add(compra)
+            self.repository.db.flush()
+
+            movimento = MovimentoFinanceiro(
+                tipo=TipoMovimentoFinanceiro.COMPRA_CONCRETO,
+                data_movimento=compra.data_compra,
+                valor=compra.valor_total,
+                descricao="Compra de concreto",
+                observacao=(
+                    f"Fornecedor ID {compra.fornecedor_id}. "
+                    f"Compra ID {compra.id}."
+                ),
+            )
+
+            self.repository.db.add(movimento)
+
+            return self.repository.criar(compra)
+
+        except Exception:
+            self.repository.db.rollback()
+            raise
 
     def listar(self, skip: int = 0, limit: int = 50) -> list[CompraConcreto]:
         """Lista compras ativas com paginação."""
