@@ -1,5 +1,12 @@
-from decimal import Decimal
+"""
+Model CompraConcreto — compras de concreto do SIGPREM (COMMIT 0013).
+
+Herda de Entity (Base do projeto) para manter id, ativo, criado_em
+e atualizado_em no mesmo padrão dos demais models.
+"""
+
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import Date
 from sqlalchemy import ForeignKey
@@ -33,22 +40,22 @@ class CompraConcreto(Entity):
     )
 
     quantidade_comprada: Mapped[Decimal] = mapped_column(
-        Numeric(10,3),
+        Numeric(10, 3),
         nullable=False
     )
 
     quantidade_recebida: Mapped[Decimal] = mapped_column(
-        Numeric(10,3),
+        Numeric(10, 3),
         nullable=False
     )
 
     saldo: Mapped[Decimal] = mapped_column(
-        Numeric(10,3),
+        Numeric(10, 3),
         nullable=False
     )
 
     valor_total: Mapped[Decimal] = mapped_column(
-        Numeric(12,2),
+        Numeric(12, 2),
         nullable=False
     )
 
