@@ -1,10 +1,12 @@
 """
-Router de Vendas — endpoints HTTP do cadastro (COMMIT 0011).
+Router de Vendas — endpoints HTTP do cadastro (COMMIT 0048).
 
 Mapeia temporariamente exceções de domínio para HTTPException.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from datetime import date
+from typing import Any
 from typing import NoReturn
 from uuid import UUID
 
@@ -70,6 +72,26 @@ def listar(
     _ = usuario
     service = _get_service(db)
     return service.listar(skip=skip, limit=limit)
+
+
+@router.get("/relatorio/periodo")
+def obter_relatorio_periodo(
+    data_inicial: date = Query(...),
+    data_final: date = Query(...),
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_usuario),
+) -> dict[str, Any]:
+    """Retorna o relatório gerencial de vendas no período informado."""
+    _ = usuario
+
+    if data_inicial > data_final:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="data_inicial não pode ser posterior a data_final.",
+        )
+
+    service = _get_service(db)
+    return service.relatorio_periodo(data_inicial, data_final)
 
 
 @router.get("/{venda_id}", response_model=VendaResponse)
