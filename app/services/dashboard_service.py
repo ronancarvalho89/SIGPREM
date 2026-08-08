@@ -1,5 +1,5 @@
 """
-Service de Dashboard — indicadores gerenciais (COMMIT 0039).
+Service de Dashboard — indicadores gerenciais (COMMIT 0040).
 
 Não lança HTTPException.
 Centraliza consolidações a partir dos Services existentes.
@@ -8,13 +8,16 @@ Centraliza consolidações a partir dos Services existentes.
 from decimal import Decimal
 from typing import Any
 
+from app.models.producao import Producao
 from app.models.venda import Venda
 from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
+from app.repositories.producao_repository import ProducaoRepository
 from app.repositories.venda_repository import VendaRepository
 from app.services.movimento_financeiro_service import MovimentoFinanceiroService
+from app.services.producao_service import ProducaoService
 from app.services.venda_service import VendaService
 
 
@@ -30,16 +33,20 @@ class DashboardService:
         self.venda_service = VendaService(
             VendaRepository(repository.db)
         )
+        self.producao_service = ProducaoService(
+            ProducaoRepository(repository.db)
+        )
 
     def dashboard(self) -> dict[str, Any]:
         """
         Consolida os indicadores gerenciais do dashboard.
 
-        Retorna fluxo financeiro e indicadores comerciais.
+        Retorna fluxo financeiro, comercial e produção.
         """
         return {
             "fluxo_financeiro": self.financeiro_service.fluxo_caixa(),
             "comercial": self._indicadores_comerciais(),
+            "producao": self._indicadores_producao(),
         }
 
     def obter_indicadores(self) -> dict[str, int]:
@@ -80,22 +87,63 @@ class DashboardService:
             "menor_venda": min(valores),
         }
 
+    def _indicadores_producao(self) -> dict[str, Any]:
+        """Consolida indicadores de produção a partir do ProducaoService."""
+        producoes = self._listar_todas_producoes()
+        quantidade_producoes = len(producoes)
+
+        if quantidade_producoes == 0:
+            zero = Decimal("0")
+            return {
+                "quantidade_producoes": 0,
+                "quantidade_total_produzida": zero,
+                "custo_total_producao": zero,
+                "custo_medio_producao": zero,
+            }
+
+        quantidade_total_produzida = sum(
+            (Decimal(str(p.quantidade_produzida)) for p in producoes),
+            Decimal("0"),
+        )
+        custo_total_producao = sum(
+            (Decimal(str(p.valor_producao)) for p in producoes),
+            Decimal("0"),
+        )
+        custo_medio_producao = (
+            custo_total_producao / Decimal(quantidade_producoes)
+        )
+
+        return {
+            "quantidade_producoes": quantidade_producoes,
+            "quantidade_total_produzida": quantidade_total_produzida,
+            "custo_total_producao": custo_total_producao,
+            "custo_medio_producao": custo_medio_producao,
+        }
+
     def _listar_todas_vendas(self) -> list[Venda]:
         """Lista todas as vendas ativas via VendaService (paginado)."""
-        vendas: list[Venda] = []
+        return self._listar_paginado(self.venda_service.listar)
+
+    def _listar_todas_producoes(self) -> list[Producao]:
+        """Lista todas as produções ativas via ProducaoService (paginado)."""
+        return self._listar_paginado(self.producao_service.listar)
+
+    def _listar_paginado(self, listar) -> list[Any]:
+        """Percorre listagens paginadas de um service até o fim."""
+        itens: list[Any] = []
         skip = 0
         limit = 100
 
         while True:
-            lote = self.venda_service.listar(skip=skip, limit=limit)
+            lote = listar(skip=skip, limit=limit)
             if not lote:
                 break
 
-            vendas.extend(lote)
+            itens.extend(lote)
 
             if len(lote) < limit:
                 break
 
             skip += limit
 
-        return vendas
+        return itens
