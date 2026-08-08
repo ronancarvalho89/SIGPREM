@@ -1,10 +1,11 @@
 """
-Service de Venda — regras de negócio (COMMIT 0035).
+Service de Venda — regras de negócio (COMMIT 0047).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from datetime import date
 from decimal import Decimal
 from typing import Any
 from typing import Optional
@@ -179,6 +180,52 @@ class VendaService:
         """Realiza exclusão lógica da venda (ativo = False)."""
         venda = self.buscar_por_id(venda_id)
         return self.repository.inativar(venda)
+
+    def relatorio_periodo(
+        self,
+        data_inicial: date,
+        data_final: date,
+    ) -> dict[str, Any]:
+        """
+        Consolida relatório gerencial de vendas no período informado.
+        """
+        vendas = self.repository.listar_ativas_por_periodo(
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
+        return self._consolidar_relatorio(vendas)
+
+    def _consolidar_relatorio(
+        self,
+        vendas: list[Venda],
+    ) -> dict[str, Any]:
+        """Consolida indicadores gerenciais a partir de uma lista de vendas."""
+        quantidade_vendas = len(vendas)
+
+        if quantidade_vendas == 0:
+            zero = Decimal("0")
+            return {
+                "quantidade_vendas": 0,
+                "valor_total": zero,
+                "ticket_medio": zero,
+                "maior_venda": zero,
+                "menor_venda": zero,
+                "clientes_atendidos": 0,
+            }
+
+        valores = [Decimal(str(venda.valor_total)) for venda in vendas]
+        valor_total = sum(valores, Decimal("0"))
+        ticket_medio = valor_total / Decimal(quantidade_vendas)
+        clientes_atendidos = len({venda.cliente_id for venda in vendas})
+
+        return {
+            "quantidade_vendas": quantidade_vendas,
+            "valor_total": valor_total,
+            "ticket_medio": ticket_medio,
+            "maior_venda": max(valores),
+            "menor_venda": min(valores),
+            "clientes_atendidos": clientes_atendidos,
+        }
 
     def _validar_numero_unico(
         self,

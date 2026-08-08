@@ -1,10 +1,11 @@
 """
-Repository de Venda — acesso a dados (COMMIT 0011).
+Repository de Venda — acesso a dados (COMMIT 0047).
 
 Responsável exclusivamente por operações de persistência.
 Não contém regras de negócio.
 """
 
+from datetime import date
 from typing import Optional
 from uuid import UUID
 
@@ -35,6 +36,23 @@ class VendaRepository:
             .order_by(Venda.data_venda.desc())
             .offset(skip)
             .limit(limit)
+            .all()
+        )
+
+    def listar_ativas_por_periodo(
+        self,
+        data_inicial: date,
+        data_final: date,
+    ) -> list[Venda]:
+        """Lista vendas ativas no intervalo de datas (inclusivo)."""
+        return (
+            self.db.query(Venda)
+            .filter(
+                Venda.ativo.is_(True),
+                Venda.data_venda >= data_inicial,
+                Venda.data_venda <= data_final,
+            )
+            .order_by(Venda.data_venda.desc())
             .all()
         )
 
