@@ -1,6 +1,8 @@
 """
-Router de Dashboard — indicadores agregados (COMMIT 0009).
+Router de Dashboard — indicadores consolidados (COMMIT 0044).
 """
+
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -19,12 +21,17 @@ router = APIRouter(
 )
 
 
+def _get_service(db: Session) -> DashboardService:
+    """Instancia o DashboardService com o repository."""
+    return DashboardService(DashboardRepository(db))
+
+
 @router.get("")
 def obter_dashboard(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
-) -> dict[str, int]:
-    """Retorna os indicadores do dashboard."""
+) -> dict[str, Any]:
+    """Retorna o dashboard consolidado do sistema."""
     _ = usuario
-    service = DashboardService(DashboardRepository(db))
-    return service.obter_indicadores()
+    service = _get_service(db)
+    return service.dashboard()
