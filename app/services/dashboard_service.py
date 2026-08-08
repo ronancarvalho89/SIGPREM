@@ -1,5 +1,5 @@
 """
-Service de Dashboard — indicadores gerenciais (COMMIT 0040).
+Service de Dashboard — indicadores gerenciais (COMMIT 0041).
 
 Não lança HTTPException.
 Centraliza consolidações a partir dos Services existentes.
@@ -8,14 +8,20 @@ Centraliza consolidações a partir dos Services existentes.
 from decimal import Decimal
 from typing import Any
 
+from app.models.movimento_estoque import MovimentoEstoque
+from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.producao import Producao
 from app.models.venda import Venda
 from app.repositories.dashboard_repository import DashboardRepository
+from app.repositories.movimento_estoque_repository import (
+    MovimentoEstoqueRepository,
+)
 from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
 from app.repositories.producao_repository import ProducaoRepository
 from app.repositories.venda_repository import VendaRepository
+from app.services.movimento_estoque_service import MovimentoEstoqueService
 from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 from app.services.producao_service import ProducaoService
 from app.services.venda_service import VendaService
@@ -36,17 +42,21 @@ class DashboardService:
         self.producao_service = ProducaoService(
             ProducaoRepository(repository.db)
         )
+        self.estoque_service = MovimentoEstoqueService(
+            MovimentoEstoqueRepository(repository.db)
+        )
 
     def dashboard(self) -> dict[str, Any]:
         """
         Consolida os indicadores gerenciais do dashboard.
 
-        Retorna fluxo financeiro, comercial e produção.
+        Retorna fluxo financeiro, comercial, produção e estoque.
         """
         return {
             "fluxo_financeiro": self.financeiro_service.fluxo_caixa(),
             "comercial": self._indicadores_comerciais(),
             "producao": self._indicadores_producao(),
+            "estoque": self._indicadores_estoque(),
         }
 
     def obter_indicadores(self) -> dict[str, int]:
@@ -120,6 +130,50 @@ class DashboardService:
             "custo_medio_producao": custo_medio_producao,
         }
 
+    def _indicadores_estoque(self) -> dict[str, Any]:
+        """Consolida indicadores de estoque a partir do MovimentoEstoqueService."""
+        movimentos = self._listar_todos_movimentos_estoque()
+        quantidade_movimentos = len(movimentos)
+
+        if quantidade_movimentos == 0:
+            zero = Decimal("0")
+            return {
+                "quantidade_movimentos": 0,
+                "total_entradas": zero,
+                "total_saidas": zero,
+                "saldo_total_estoque": zero,
+                "produtos_movimentados": 0,
+            }
+
+        total_entradas = Decimal("0")
+        total_saidas = Decimal("0")
+        produtos: set[int] = set()
+
+        for movimento in movimentos:
+            quantidade = Decimal(str(movimento.quantidade))
+            produtos.add(movimento.produto_id)
+
+            if movimento.tipo == TipoMovimentoEstoque.ENTRADA:
+                total_entradas += quantidade
+            elif movimento.tipo == TipoMovimentoEstoque.SAIDA:
+                total_saidas += quantidade
+
+        saldo_total_estoque = sum(
+            (
+                self.estoque_service.saldo_produto(produto_id)
+                for produto_id in produtos
+            ),
+            Decimal("0"),
+        )
+
+        return {
+            "quantidade_movimentos": quantidade_movimentos,
+            "total_entradas": total_entradas,
+            "total_saidas": total_saidas,
+            "saldo_total_estoque": saldo_total_estoque,
+            "produtos_movimentados": len(produtos),
+        }
+
     def _listar_todas_vendas(self) -> list[Venda]:
         """Lista todas as vendas ativas via VendaService (paginado)."""
         return self._listar_paginado(self.venda_service.listar)
@@ -127,6 +181,10 @@ class DashboardService:
     def _listar_todas_producoes(self) -> list[Producao]:
         """Lista todas as produções ativas via ProducaoService (paginado)."""
         return self._listar_paginado(self.producao_service.listar)
+
+    def _listar_todos_movimentos_estoque(self) -> list[MovimentoEstoque]:
+        """Lista todos os movimentos ativos via MovimentoEstoqueService."""
+        return self._listar_paginado(self.estoque_service.listar)
 
     def _listar_paginado(self, listar) -> list[Any]:
         """Percorre listagens paginadas de um service até o fim."""
