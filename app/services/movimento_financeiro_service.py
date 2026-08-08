@@ -1,13 +1,16 @@
 """
-Service de Movimento Financeiro — regras de negócio (COMMIT 0024).
+Service de Movimento Financeiro — regras de negócio (COMMIT 0035).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from app.models.movimento_financeiro import MovimentoFinanceiro
+from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
@@ -33,6 +36,29 @@ class MovimentoFinanceiroService:
         """Cria um novo movimento financeiro."""
         movimento = MovimentoFinanceiro(**dados.model_dump())
         return self.repository.criar(movimento)
+
+    def registrar(
+        self,
+        tipo: TipoMovimentoFinanceiro,
+        data: date,
+        valor: Decimal,
+        observacao: str = "",
+        descricao: str = "",
+    ) -> MovimentoFinanceiro:
+        """
+        Registra um lançamento financeiro na sessão atual.
+
+        Não realiza commit — permanece na transação do chamador.
+        """
+        movimento = MovimentoFinanceiro(
+            tipo=tipo,
+            data_movimento=data,
+            valor=valor,
+            descricao=descricao,
+            observacao=observacao,
+        )
+        self.repository.db.add(movimento)
+        return movimento
 
     def listar(
         self,

@@ -1,5 +1,5 @@
 """
-Service de Compra de Concreto — regras de negócio (COMMIT 0026).
+Service de Compra de Concreto — regras de negócio (COMMIT 0035).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -9,11 +9,14 @@ from typing import Any
 from typing import Optional
 
 from app.models.compra_concreto import CompraConcreto
-from app.models.movimento_financeiro import MovimentoFinanceiro
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.repositories.compra_concreto_repository import CompraConcretoRepository
+from app.repositories.movimento_financeiro_repository import (
+    MovimentoFinanceiroRepository,
+)
 from app.schemas.compra_concreto import CompraConcretoCreate
 from app.schemas.compra_concreto import CompraConcretoUpdate
+from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 
 
 class CompraConcretoNaoEncontrada(Exception):
@@ -34,6 +37,9 @@ class CompraConcretoService:
     def __init__(self, repository: CompraConcretoRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
+        self.financeiro_service = MovimentoFinanceiroService(
+            MovimentoFinanceiroRepository(repository.db)
+        )
 
     def criar(self, dados: CompraConcretoCreate) -> CompraConcreto:
         """
@@ -56,9 +62,9 @@ class CompraConcretoService:
             self.repository.db.add(compra)
             self.repository.db.flush()
 
-            movimento = MovimentoFinanceiro(
+            self.financeiro_service.registrar(
                 tipo=TipoMovimentoFinanceiro.COMPRA_CONCRETO,
-                data_movimento=compra.data_compra,
+                data=compra.data_compra,
                 valor=compra.valor_total,
                 descricao="Compra de concreto",
                 observacao=(
@@ -66,8 +72,6 @@ class CompraConcretoService:
                     f"Compra ID {compra.id}."
                 ),
             )
-
-            self.repository.db.add(movimento)
 
             return self.repository.criar(compra)
 

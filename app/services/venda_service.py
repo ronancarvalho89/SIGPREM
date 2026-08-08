@@ -1,5 +1,5 @@
 """
-Service de Venda — regras de negócio (COMMIT 0034).
+Service de Venda — regras de negócio (COMMIT 0035).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -13,16 +13,19 @@ from uuid import UUID
 from app.models.item_venda import ItemVenda
 from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
-from app.models.movimento_financeiro import MovimentoFinanceiro
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.venda import Venda
 from app.repositories.movimento_estoque_repository import (
     MovimentoEstoqueRepository,
 )
+from app.repositories.movimento_financeiro_repository import (
+    MovimentoFinanceiroRepository,
+)
 from app.repositories.venda_repository import VendaRepository
 from app.schemas.venda import VendaCreate
 from app.schemas.venda import VendaUpdate
 from app.services.movimento_estoque_service import MovimentoEstoqueService
+from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 
 
 class VendaNaoEncontrada(Exception):
@@ -53,6 +56,9 @@ class VendaService:
         self.repository = repository
         self.estoque_service = MovimentoEstoqueService(
             MovimentoEstoqueRepository(repository.db)
+        )
+        self.financeiro_service = MovimentoFinanceiroService(
+            MovimentoFinanceiroRepository(repository.db)
         )
 
     def criar(
@@ -99,9 +105,9 @@ class VendaService:
 
             self._baixar_estoque(venda, itens_criados)
 
-            movimento = MovimentoFinanceiro(
+            self.financeiro_service.registrar(
                 tipo=TipoMovimentoFinanceiro.VENDA,
-                data_movimento=venda.data_venda,
+                data=venda.data_venda,
                 valor=venda.valor_total,
                 descricao="Venda",
                 observacao=(
@@ -109,8 +115,6 @@ class VendaService:
                     f"Venda ID {venda.id}."
                 ),
             )
-
-            self.repository.db.add(movimento)
 
             return self.repository.criar(venda)
 

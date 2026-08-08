@@ -1,5 +1,5 @@
 """
-Service de Produção — regras de negócio (COMMIT 0033).
+Service de Produção — regras de negócio (COMMIT 0035).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -11,16 +11,19 @@ from typing import Any
 from app.models.compra_concreto import CompraConcreto
 from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
-from app.models.movimento_financeiro import MovimentoFinanceiro
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.produto import Produto
 from app.models.producao import Producao
 from app.repositories.funcionario_valor_produto_repository import (
     FuncionarioValorProdutoRepository,
 )
+from app.repositories.movimento_financeiro_repository import (
+    MovimentoFinanceiroRepository,
+)
 from app.repositories.producao_repository import ProducaoRepository
 from app.schemas.producao import ProducaoCreate
 from app.schemas.producao import ProducaoUpdate
+from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 
 
 class ProducaoNaoEncontrada(Exception):
@@ -55,6 +58,9 @@ class ProducaoService:
         self.repository = repository
         self.valor_repository = FuncionarioValorProdutoRepository(
             repository.db
+        )
+        self.financeiro_service = MovimentoFinanceiroService(
+            MovimentoFinanceiroRepository(repository.db)
         )
 
     def criar(self, dados: ProducaoCreate) -> Producao:
@@ -136,9 +142,9 @@ class ProducaoService:
 
             # Tipo disponível no model: PRODUCAO (custo de produção / mão de obra).
             # Model sem funcionario_id/producao_id — referências na observação.
-            movimento_financeiro = MovimentoFinanceiro(
+            self.financeiro_service.registrar(
                 tipo=TipoMovimentoFinanceiro.PRODUCAO,
-                data_movimento=producao.data,
+                data=producao.data,
                 valor=producao.valor_producao,
                 descricao="Custo de produção",
                 observacao=(
@@ -146,8 +152,6 @@ class ProducaoService:
                     f"Funcionário ID {producao.funcionario_id}."
                 ),
             )
-
-            self.repository.db.add(movimento_financeiro)
 
             return self.repository.criar(producao)
 
