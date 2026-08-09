@@ -294,6 +294,52 @@ As APIs seguem:
 
 Visão geral dos indicadores.
 
+### Objetivo do Dashboard
+
+O Dashboard centraliza os principais indicadores gerenciais do sistema, fornecendo uma visão consolidada da operação financeira, comercial, produtiva e de estoque.
+
+### Arquitetura
+
+O Dashboard é composto exclusivamente por chamadas aos Services existentes, sem consultas diretas ao banco de dados.
+
+Fluxo:
+
+```text
+Dashboard API
+↓
+DashboardService
+↓
+Services Especializados
+↓
+Repositories
+↓
+Banco de Dados
+```
+
+### Blocos do Dashboard
+
+Blocos atualmente existentes:
+
+- **Fluxo Financeiro** — consolida entradas, saídas, saldo, quantidade de lançamentos e totais por tipo de movimento financeiro.
+- **Comercial** — apresenta quantidade de vendas, valor total, ticket médio, maior e menor venda.
+- **Produção** — resume quantidade de produções, volume produzido, custo total e custo médio de produção.
+- **Estoque** — indica movimentos, totais de entradas e saídas, saldo total e produtos movimentados.
+- **Executivo** — deriva indicadores estratégicos (faturamento, custo, lucro, margem, clientes atendidos e produtos movimentados) a partir dos demais blocos.
+
+### Princípios Arquiteturais
+
+O Dashboard segue:
+
+- reutilização de Services;
+- ausência de consultas SQL próprias;
+- ausência de regras duplicadas;
+- consolidação de indicadores;
+- baixo acoplamento.
+
+### Evolução
+
+Novos indicadores deverão reutilizar Services existentes sempre que possível, preservando a arquitetura do projeto e evitando duplicação de regras de negócio.
+
 ## Relatórios
 
 Estrutura dos relatórios existentes e futuros.
