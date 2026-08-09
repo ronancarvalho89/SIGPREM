@@ -1,15 +1,17 @@
 """
-Service de Inventário — regras de negócio (COMMIT 0069).
+Service de Inventário — regras de negócio (COMMIT 0072).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from decimal import Decimal
 from typing import Any
 from typing import Optional
 
 from app.models.inventario import Inventario
 from app.models.item_inventario import ItemInventario
+from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.repositories.inventario_repository import InventarioRepository
 from app.repositories.item_inventario_repository import ItemInventarioRepository
 from app.repositories.movimento_estoque_repository import (
@@ -18,6 +20,7 @@ from app.repositories.movimento_estoque_repository import (
 from app.schemas.inventario import InventarioCreate
 from app.schemas.inventario import InventarioUpdate
 from app.schemas.item_inventario import ItemInventarioCreate
+from app.schemas.movimento_estoque import MovimentoEstoqueCreate
 from app.services.item_inventario_service import ItemInventarioService
 from app.services.movimento_estoque_service import MovimentoEstoqueService
 
@@ -129,3 +132,67 @@ class InventarioService:
         )
 
         return self.item_inventario_service.criar(dados_item)
+
+    def concluir(self, inventario_id: int) -> Inventario:
+        """
+        Conclui o inventário e gera ajustes de estoque.
+
+        Para cada item com diferença diferente de zero, registra
+        ENTRADA ou SAÍDA via MovimentoEstoqueService.
+        """
+        inventario = self.buscar_por_id(inventario_id)
+        itens = self._listar_itens_do_inventario(inventario_id)
+
+        for item in itens:
+            diferenca = Decimal(str(item.diferenca))
+
+            if diferenca == 0:
+                continue
+
+            if diferenca > 0:
+                tipo = TipoMovimentoEstoque.ENTRADA
+                quantidade = diferenca
+            else:
+                tipo = TipoMovimentoEstoque.SAIDA
+                quantidade = abs(diferenca)
+
+            self.estoque_service.criar(
+                MovimentoEstoqueCreate(
+                    data=inventario.data_inventario,
+                    produto_id=item.produto_id,
+                    quantidade=quantidade,
+                    tipo=tipo,
+                    observacao=f"Ajuste inventário {inventario.id}",
+                )
+            )
+
+        return inventario
+
+    def _listar_itens_do_inventario(
+        self,
+        inventario_id: int,
+    ) -> list[ItemInventario]:
+        """Lista itens do inventário via ItemInventarioService (paginado)."""
+        itens: list[ItemInventario] = []
+        skip = 0
+        limit = 100
+
+        while True:
+            lote = self.item_inventario_service.listar(
+                skip=skip,
+                limit=limit,
+            )
+            if not lote:
+                break
+
+            for item in lote:
+                if item.inventario_id == inventario_id:
+                    itens.append(item)
+
+            if len(lote) < limit:
+                break
+
+            skip += limit
+
+        return itens
+
