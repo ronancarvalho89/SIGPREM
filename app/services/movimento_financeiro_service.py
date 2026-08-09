@@ -1,5 +1,5 @@
 """
-Service de Movimento Financeiro — regras de negócio (COMMIT 0045).
+Service de Movimento Financeiro — regras de negócio (EPIC 001).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -8,14 +8,18 @@ No futuro existirá um middleware/handler global de exceções.
 from datetime import date
 from decimal import Decimal
 from typing import Any
+from typing import Optional
 
 from app.models.movimento_financeiro import MovimentoFinanceiro
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
+from app.schemas.auditoria import AuditoriaCreate
 from app.schemas.movimento_financeiro import MovimentoFinanceiroCreate
 from app.schemas.movimento_financeiro import MovimentoFinanceiroUpdate
+from app.services.auditoria_service import AuditoriaService
 
 
 class MovimentoFinanceiroNaoEncontrado(Exception):
@@ -36,6 +40,21 @@ class MovimentoFinanceiroService:
     def __init__(self, repository: MovimentoFinanceiroRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
+        self._auditoria_service: Optional[AuditoriaService] = None
+
+    @property
+    def auditoria_service(self) -> AuditoriaService:
+        """Service de auditoria (lazy) compartilhando a mesma sessão."""
+        if self._auditoria_service is None:
+            self._auditoria_service = AuditoriaService(
+                AuditoriaRepository(self.repository.db)
+            )
+        return self._auditoria_service
+
+    @auditoria_service.setter
+    def auditoria_service(self, value: AuditoriaService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._auditoria_service = value
 
     def criar(
         self,
@@ -43,7 +62,16 @@ class MovimentoFinanceiroService:
     ) -> MovimentoFinanceiro:
         """Cria um novo movimento financeiro."""
         movimento = MovimentoFinanceiro(**dados.model_dump())
-        return self.repository.criar(movimento)
+        movimento = self.repository.criar(movimento)
+        self._registrar_auditoria(
+            acao="criar",
+            entidade_id=movimento.id,
+            descricao=(
+                f"Movimento financeiro {movimento.id} criado. "
+                f"Tipo {movimento.tipo.value}."
+            ),
+        )
+        return movimento
 
     def registrar(
         self,
@@ -57,6 +85,7 @@ class MovimentoFinanceiroService:
         Registra um lançamento financeiro na sessão atual.
 
         Não realiza commit — permanece na transação do chamador.
+        Não gera auditoria aqui para não interromper a transação.
         """
         movimento = MovimentoFinanceiro(
             tipo=tipo,
@@ -104,7 +133,13 @@ class MovimentoFinanceiroService:
     def excluir(self, movimento_id: int) -> MovimentoFinanceiro:
         """Realiza exclusão lógica do movimento (ativo = False)."""
         movimento = self.buscar_por_id(movimento_id)
-        return self.repository.inativar(movimento)
+        movimento = self.repository.inativar(movimento)
+        self._registrar_auditoria(
+            acao="inativar",
+            entidade_id=movimento.id,
+            descricao=f"Movimento financeiro {movimento.id} inativado.",
+        )
+        return movimento
 
     def fluxo_caixa(self) -> dict[str, Any]:
         """
@@ -160,3 +195,25 @@ class MovimentoFinanceiroService:
             "quantidade_lancamentos": len(movimentos),
             "total_por_tipo": total_por_tipo,
         }
+
+    def _registrar_auditoria(
+        self,
+        acao: str,
+        entidade_id: int,
+        descricao: str,
+        usuario_id: Optional[int] = None,
+    ) -> None:
+        """Registra auditoria financeira via AuditoriaService."""
+        try:
+            self.auditoria_service.registrar(
+                AuditoriaCreate(
+                    usuario_id=usuario_id,
+                    modulo="financeiro",
+                    acao=acao,
+                    entidade="MovimentoFinanceiro",
+                    entidade_id=entidade_id,
+                    descricao=descricao,
+                )
+            )
+        except Exception:
+            return

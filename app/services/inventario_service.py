@@ -1,5 +1,5 @@
 """
-Service de Inventário — regras de negócio (COMMIT 0073).
+Service de Inventário — regras de negócio (EPIC 001).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -12,21 +12,36 @@ from typing import Optional
 from app.models.inventario import Inventario
 from app.models.item_inventario import ItemInventario
 from app.models.movimento_estoque import TipoMovimentoEstoque
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.inventario_repository import InventarioRepository
 from app.repositories.item_inventario_repository import ItemInventarioRepository
 from app.repositories.movimento_estoque_repository import (
     MovimentoEstoqueRepository,
 )
+from app.schemas.auditoria import AuditoriaCreate
 from app.schemas.inventario import InventarioCreate
 from app.schemas.inventario import InventarioUpdate
 from app.schemas.item_inventario import ItemInventarioCreate
 from app.schemas.movimento_estoque import MovimentoEstoqueCreate
+from app.services.auditoria_service import AuditoriaService
 from app.services.item_inventario_service import ItemInventarioService
 from app.services.movimento_estoque_service import MovimentoEstoqueService
 
 
+STATUS_INVENTARIO_ABERTO = "aberto"
+STATUS_INVENTARIO_CONCLUIDO = "concluido"
+STATUS_INVENTARIO_VALIDOS = {
+    STATUS_INVENTARIO_ABERTO,
+    STATUS_INVENTARIO_CONCLUIDO,
+}
+
+
 class InventarioNaoEncontrado(Exception):
     """Inventário ativo não encontrado."""
+
+
+class InventarioStatusInvalido(Exception):
+    """Status de inventário informado é inválido."""
 
 
 class InventarioService:
@@ -37,6 +52,7 @@ class InventarioService:
         self.repository = repository
         self._item_inventario_service: Optional[ItemInventarioService] = None
         self._estoque_service: Optional[MovimentoEstoqueService] = None
+        self._auditoria_service: Optional[AuditoriaService] = None
 
     @property
     def item_inventario_service(self) -> ItemInventarioService:
@@ -66,10 +82,32 @@ class InventarioService:
         """Permite injeção/substituição em testes."""
         self._estoque_service = value
 
+    @property
+    def auditoria_service(self) -> AuditoriaService:
+        """Service de auditoria (lazy) compartilhando a mesma sessão."""
+        if self._auditoria_service is None:
+            self._auditoria_service = AuditoriaService(
+                AuditoriaRepository(self.repository.db)
+            )
+        return self._auditoria_service
+
+    @auditoria_service.setter
+    def auditoria_service(self, value: AuditoriaService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._auditoria_service = value
+
     def criar(self, dados: InventarioCreate) -> Inventario:
         """Cria um novo inventário."""
         inventario = Inventario(**dados.model_dump())
-        return self.repository.criar(inventario)
+        inventario = self.repository.criar(inventario)
+        self._registrar_auditoria(
+            usuario_id=inventario.usuario_id,
+            acao="criar",
+            entidade="Inventario",
+            entidade_id=inventario.id,
+            descricao=f"Inventário {inventario.id} criado.",
+        )
+        return inventario
 
     def listar(
         self,
@@ -78,6 +116,20 @@ class InventarioService:
     ) -> list[Inventario]:
         """Lista inventários ativos com paginação."""
         return self.repository.listar(skip=skip, limit=limit)
+
+    def listar_por_status(
+        self,
+        status: str,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> list[Inventario]:
+        """Lista inventários ativos filtrados por status."""
+        status_normalizado = self._normalizar_status(status)
+        return self.repository.listar_por_status(
+            status_normalizado,
+            skip=skip,
+            limit=limit,
+        )
 
     def buscar_por_id(self, inventario_id: int) -> Inventario:
         """Retorna inventário ativo por id ou levanta InventarioNaoEncontrado."""
@@ -131,7 +183,18 @@ class InventarioService:
             }
         )
 
-        return self.item_inventario_service.criar(dados_item)
+        item = self.item_inventario_service.criar(dados_item)
+        self._registrar_auditoria(
+            usuario_id=inventario.usuario_id,
+            acao="adicionar_item",
+            entidade="ItemInventario",
+            entidade_id=item.id,
+            descricao=(
+                f"Item {item.id} adicionado ao inventário "
+                f"{inventario.id}."
+            ),
+        )
+        return item
 
     def concluir(self, inventario_id: int) -> Inventario:
         """
@@ -148,7 +211,27 @@ class InventarioService:
         for item in itens:
             self._registrar_ajuste_se_necessario(inventario, item)
 
+        inventario.status = STATUS_INVENTARIO_CONCLUIDO
+        inventario = self.repository.atualizar(inventario)
+        self._registrar_auditoria(
+            usuario_id=inventario.usuario_id,
+            acao="concluir",
+            entidade="Inventario",
+            entidade_id=inventario.id,
+            descricao=f"Inventário {inventario.id} concluído.",
+        )
         return inventario
+
+    def _normalizar_status(self, status: str) -> str:
+        """Valida e normaliza o status informado."""
+        normalizado = status.strip().lower().replace("í", "i")
+
+        if normalizado not in STATUS_INVENTARIO_VALIDOS:
+            raise InventarioStatusInvalido(
+                "Status inválido. Use 'aberto' ou 'concluido'."
+            )
+
+        return normalizado
 
     def _registrar_ajuste_se_necessario(
         self,
@@ -168,7 +251,7 @@ class InventarioService:
             tipo = TipoMovimentoEstoque.SAIDA
             quantidade = abs(diferenca)
 
-        self.estoque_service.criar(
+        movimento = self.estoque_service.criar(
             MovimentoEstoqueCreate(
                 data=inventario.data_inventario,
                 produto_id=item.produto_id,
@@ -177,3 +260,36 @@ class InventarioService:
                 observacao=f"Ajuste inventário {inventario.id}",
             )
         )
+        self._registrar_auditoria(
+            usuario_id=inventario.usuario_id,
+            acao="ajuste_estoque",
+            entidade="MovimentoEstoque",
+            entidade_id=movimento.id,
+            descricao=(
+                f"Ajuste de estoque do inventário {inventario.id} "
+                f"para o produto {item.produto_id}."
+            ),
+        )
+
+    def _registrar_auditoria(
+        self,
+        acao: str,
+        entidade: str,
+        entidade_id: int,
+        descricao: str,
+        usuario_id: Optional[int] = None,
+    ) -> None:
+        """Registra auditoria da operação de inventário via AuditoriaService."""
+        try:
+            self.auditoria_service.registrar(
+                AuditoriaCreate(
+                    usuario_id=usuario_id,
+                    modulo="inventario",
+                    acao=acao,
+                    entidade=entidade,
+                    entidade_id=entidade_id,
+                    descricao=descricao,
+                )
+            )
+        except Exception:
+            return

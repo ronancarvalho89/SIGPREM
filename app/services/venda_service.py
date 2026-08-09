@@ -1,5 +1,5 @@
 """
-Service de Venda — regras de negócio (COMMIT 0047).
+Service de Venda — regras de negócio (EPIC 001).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -16,6 +16,7 @@ from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.venda import Venda
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.movimento_estoque_repository import (
     MovimentoEstoqueRepository,
 )
@@ -23,8 +24,10 @@ from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
 from app.repositories.venda_repository import VendaRepository
+from app.schemas.auditoria import AuditoriaCreate
 from app.schemas.venda import VendaCreate
 from app.schemas.venda import VendaUpdate
+from app.services.auditoria_service import AuditoriaService
 from app.services.movimento_estoque_service import MovimentoEstoqueService
 from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 
@@ -57,6 +60,7 @@ class VendaService:
         self.repository = repository
         self._estoque_service: Optional[MovimentoEstoqueService] = None
         self._financeiro_service: Optional[MovimentoFinanceiroService] = None
+        self._auditoria_service: Optional[AuditoriaService] = None
 
     @property
     def estoque_service(self) -> MovimentoEstoqueService:
@@ -85,6 +89,20 @@ class VendaService:
     def financeiro_service(self, value: MovimentoFinanceiroService) -> None:
         """Permite injeção/substituição em testes."""
         self._financeiro_service = value
+
+    @property
+    def auditoria_service(self) -> AuditoriaService:
+        """Service de auditoria (lazy) compartilhando a mesma sessão."""
+        if self._auditoria_service is None:
+            self._auditoria_service = AuditoriaService(
+                AuditoriaRepository(self.repository.db)
+            )
+        return self._auditoria_service
+
+    @auditoria_service.setter
+    def auditoria_service(self, value: AuditoriaService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._auditoria_service = value
 
     def criar(
         self,
@@ -141,7 +159,16 @@ class VendaService:
                 ),
             )
 
-            return self.repository.criar(venda)
+            venda = self.repository.criar(venda)
+            self._registrar_auditoria(
+                acao="criar",
+                entidade_id=venda.id,
+                descricao=(
+                    f"Venda {venda.id} criada. "
+                    f"Número {venda.numero}."
+                ),
+            )
+            return venda
 
         except Exception:
             self.repository.db.rollback()
@@ -174,12 +201,24 @@ class VendaService:
         for campo, valor in campos.items():
             setattr(venda, campo, valor)
 
-        return self.repository.atualizar(venda)
+        venda = self.repository.atualizar(venda)
+        self._registrar_auditoria(
+            acao="atualizar",
+            entidade_id=venda.id,
+            descricao=f"Venda {venda.id} atualizada.",
+        )
+        return venda
 
     def excluir(self, venda_id: UUID) -> Venda:
         """Realiza exclusão lógica da venda (ativo = False)."""
         venda = self.buscar_por_id(venda_id)
-        return self.repository.inativar(venda)
+        venda = self.repository.inativar(venda)
+        self._registrar_auditoria(
+            acao="inativar",
+            entidade_id=venda.id,
+            descricao=f"Venda {venda.id} inativada.",
+        )
+        return venda
 
     def relatorio_periodo(
         self,
@@ -308,3 +347,25 @@ class VendaService:
                 reservado.get(item.produto_id, Decimal("0"))
                 + Decimal(str(item.quantidade))
             )
+
+    def _registrar_auditoria(
+        self,
+        acao: str,
+        entidade_id: UUID,
+        descricao: str,
+        usuario_id: Optional[int] = None,
+    ) -> None:
+        """Registra auditoria da operação de venda via AuditoriaService."""
+        try:
+            self.auditoria_service.registrar(
+                AuditoriaCreate(
+                    usuario_id=usuario_id,
+                    modulo="venda",
+                    acao=acao,
+                    entidade="Venda",
+                    entidade_id=int(entidade_id.int % (2**31 - 1)),
+                    descricao=descricao,
+                )
+            )
+        except Exception:
+            return

@@ -427,15 +427,39 @@ O projeto adota:
 - reutilização de Services;
 - Soft Delete quando aplicável.
 
+### Auditoria
+
+O SIGPREM mantém uma trilha de auditoria para registrar operações relevantes do sistema, permitindo rastreabilidade das ações executadas nos módulos de negócio.
+
+A finalidade da auditoria é preservar o histórico operacional, apoiar investigações e reforçar a segurança da informação, sem interferir nas regras de negócio dos módulos integrados.
+
+O registro das operações relevantes é realizado pelos Services internos, por meio do `AuditoriaService.registrar(...)`. A API pública de Auditoria é exclusivamente de consulta e não permite criação, alteração ou exclusão de registros.
+
+Quando o usuário estiver disponível no contexto da operação, o registro identifica o responsável por meio do campo `usuario_id`.
+
+Quando a operação ocorrer fora de um contexto de usuário autenticado, o registro poderá ser gerado sem `usuario_id`, preservando a trilha mesmo sem identificação individual.
+
+A consulta autenticada (`GET /auditoria`) permite filtrar a trilha por:
+
+- período (`data_inicial` e `data_final`);
+- usuário (`usuario_id`);
+- módulo;
+- ação;
+- entidade;
+- identificador da entidade (`entidade_id`).
+
+Os filtros são opcionais e podem ser combinados com a paginação padrão do projeto.
+
+O histórico de auditoria é preservado: não há exclusão física pela API. Quando aplicável, a inativação lógica (Soft Delete) mantém o registro no banco, sem remoção definitiva.
+
 ### Evolução
 
 Futuras versões deverão incorporar:
 
 - perfis de usuários;
-- auditoria;
-- trilha de alterações;
 - políticas de acesso;
-- monitoramento de segurança.
+- monitoramento de segurança;
+- expansão da cobertura de auditoria para novos módulos.
 
 ## Convenções de Desenvolvimento
 

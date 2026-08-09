@@ -1,5 +1,5 @@
 """
-Service de Produção — regras de negócio (COMMIT 0049).
+Service de Produção — regras de negócio (EPIC 001).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -16,6 +16,7 @@ from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.produto import Produto
 from app.models.producao import Producao
+from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.funcionario_valor_produto_repository import (
     FuncionarioValorProdutoRepository,
 )
@@ -23,8 +24,10 @@ from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
 from app.repositories.producao_repository import ProducaoRepository
+from app.schemas.auditoria import AuditoriaCreate
 from app.schemas.producao import ProducaoCreate
 from app.schemas.producao import ProducaoUpdate
+from app.services.auditoria_service import AuditoriaService
 from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 
 
@@ -66,6 +69,7 @@ class ProducaoService:
             FuncionarioValorProdutoRepository
         ] = None
         self._financeiro_service: Optional[MovimentoFinanceiroService] = None
+        self._auditoria_service: Optional[AuditoriaService] = None
 
     @property
     def valor_repository(self) -> FuncionarioValorProdutoRepository:
@@ -97,6 +101,20 @@ class ProducaoService:
     def financeiro_service(self, value: MovimentoFinanceiroService) -> None:
         """Permite injeção/substituição em testes."""
         self._financeiro_service = value
+
+    @property
+    def auditoria_service(self) -> AuditoriaService:
+        """Service de auditoria (lazy) compartilhando a mesma sessão."""
+        if self._auditoria_service is None:
+            self._auditoria_service = AuditoriaService(
+                AuditoriaRepository(self.repository.db)
+            )
+        return self._auditoria_service
+
+    @auditoria_service.setter
+    def auditoria_service(self, value: AuditoriaService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._auditoria_service = value
 
     def criar(self, dados: ProducaoCreate) -> Producao:
         """
@@ -188,7 +206,13 @@ class ProducaoService:
                 ),
             )
 
-            return self.repository.criar(producao)
+            producao = self.repository.criar(producao)
+            self._registrar_auditoria(
+                acao="criar",
+                entidade_id=producao.id,
+                descricao=f"Produção {producao.id} criada.",
+            )
+            return producao
 
         except Exception:
             self.repository.db.rollback()
@@ -224,7 +248,13 @@ class ProducaoService:
     def excluir(self, producao_id: int) -> Producao:
         """Realiza exclusão lógica da produção (ativo = False)."""
         producao = self.buscar_por_id(producao_id)
-        return self.repository.inativar(producao)
+        producao = self.repository.inativar(producao)
+        self._registrar_auditoria(
+            acao="inativar",
+            entidade_id=producao.id,
+            descricao=f"Produção {producao.id} inativada.",
+        )
+        return producao
 
     def relatorio_periodo(
         self,
@@ -279,3 +309,25 @@ class ProducaoService:
             "custo_medio_producao": custo_medio_producao,
             "funcionarios_envolvidos": funcionarios_envolvidos,
         }
+
+    def _registrar_auditoria(
+        self,
+        acao: str,
+        entidade_id: int,
+        descricao: str,
+        usuario_id: Optional[int] = None,
+    ) -> None:
+        """Registra auditoria da operação de produção via AuditoriaService."""
+        try:
+            self.auditoria_service.registrar(
+                AuditoriaCreate(
+                    usuario_id=usuario_id,
+                    modulo="producao",
+                    acao=acao,
+                    entidade="Producao",
+                    entidade_id=entidade_id,
+                    descricao=descricao,
+                )
+            )
+        except Exception:
+            return
