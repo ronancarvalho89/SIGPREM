@@ -514,6 +514,46 @@ O Roadmap orienta a evolução do SIGPREM de forma organizada, incremental e com
 
 Resumo da evolução do sistema.
 
+### Início do Projeto
+
+O projeto foi concebido para atender o gerenciamento completo de uma fábrica de pré-moldados, com foco na integração entre os setores operacional e administrativo.
+
+### Evolução da Arquitetura
+
+Foi adotada a arquitetura em camadas:
+
+- API
+- Service
+- Repository
+- Model
+
+Essa organização trouxe separação de responsabilidades, facilidade de manutenção, baixo acoplamento e maior reutilização das regras de negócio.
+
+### Evolução Funcional
+
+Foram implantados os principais módulos:
+
+- Cadastros
+- Compras
+- Produção
+- Estoque
+- Financeiro
+- Vendas
+- Dashboard
+- Relatórios
+
+### Consolidação da Arquitetura
+
+A integração entre Produção, Estoque, Financeiro e Vendas passou a ocorrer automaticamente por meio das regras de negócio centralizadas nos Services, com execução em transação única e rollback em caso de erro.
+
+### Documentação Técnica
+
+Após a consolidação do backend, iniciou-se a documentação oficial da arquitetura, banco de dados, fluxos, APIs, dashboard, regras de negócio e roadmap.
+
+### Próxima Etapa
+
+As próximas evoluções estarão concentradas em funcionalidades Enterprise, testes automatizados, deploy, auditoria, segurança e expansão do produto.
+
 ## Deploy
 
 Estrutura prevista para implantação.
