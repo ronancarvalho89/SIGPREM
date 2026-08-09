@@ -222,6 +222,74 @@ Novas entidades deverão seguir o padrão arquitetural adotado pelo projeto (Mod
 
 Organização das APIs disponíveis.
 
+### Objetivo das APIs
+
+Todas as APIs do SIGPREM seguem arquitetura REST e atuam apenas como camada de comunicação entre o cliente e os Services, sem concentrar regras de negócio.
+
+### Padrão de Funcionamento
+
+Fluxo padrão das APIs:
+
+```text
+Cliente
+↓
+API
+↓
+Service
+↓
+Repository
+↓
+Banco de Dados
+↓
+Repository
+↓
+Service
+↓
+API
+↓
+Cliente
+```
+
+### Responsabilidades da API
+
+As APIs são responsáveis apenas por:
+
+- autenticação;
+- validação de parâmetros;
+- chamada dos Services;
+- retorno das respostas;
+- códigos HTTP.
+
+### Responsabilidades dos Services
+
+Toda regra de negócio permanece exclusivamente na camada Service. A API apenas delega a execução e traduz exceções de domínio em respostas HTTP quando necessário.
+
+### Organização dos Endpoints
+
+Grupos de endpoints atualmente existentes:
+
+- **Autenticação** — login e obtenção de token de acesso.
+- **Clientes** — CRUD do cadastro de clientes.
+- **Fornecedores** — CRUD do cadastro de fornecedores.
+- **Produtos** — CRUD do cadastro de produtos.
+- **Compras** — CRUD de compras de concreto.
+- **Produção** — CRUD de produção e relatório por período.
+- **Vendas** — CRUD de vendas e relatório por período.
+- **Itens da Venda** — CRUD dos itens associados às vendas.
+- **Estoque** — CRUD de movimentos de estoque.
+- **Financeiro** — CRUD de movimentos financeiros e fluxo de caixa (geral e por período).
+- **Dashboard** — indicadores gerenciais consolidados.
+
+### Princípios adotados
+
+As APIs seguem:
+
+- baixo acoplamento;
+- alta coesão;
+- reutilização de regras;
+- ausência de acesso direto ao banco;
+- padronização das respostas.
+
 ## Dashboard
 
 Visão geral dos indicadores.
