@@ -1,5 +1,5 @@
 """
-Router de Inventários — endpoints HTTP (COMMIT 0067).
+Router de Inventários — endpoints HTTP (COMMIT 0073).
 
 Mapeia temporariamente exceções de domínio para HTTPException.
 No futuro existirá um middleware/handler global de exceções.

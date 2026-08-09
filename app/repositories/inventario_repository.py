@@ -1,5 +1,5 @@
 """
-Repository de Inventário — acesso a dados (COMMIT 0065).
+Repository de Inventário — acesso a dados (COMMIT 0073).
 
 Responsável exclusivamente por operações de persistência.
 Não contém regras de negócio.

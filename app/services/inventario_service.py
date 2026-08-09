@@ -1,5 +1,5 @@
 """
-Service de Inventário — regras de negócio (COMMIT 0072).
+Service de Inventário — regras de negócio (COMMIT 0073).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -40,7 +40,7 @@ class InventarioService:
 
     @property
     def item_inventario_service(self) -> ItemInventarioService:
-        """Service de itens de inventário (lazy)."""
+        """Service de itens de inventário (lazy) compartilhando a mesma sessão."""
         if self._item_inventario_service is None:
             self._item_inventario_service = ItemInventarioService(
                 ItemInventarioRepository(self.repository.db)
@@ -54,7 +54,7 @@ class InventarioService:
 
     @property
     def estoque_service(self) -> MovimentoEstoqueService:
-        """Service de estoque (lazy)."""
+        """Service de estoque (lazy) compartilhando a mesma sessão."""
         if self._estoque_service is None:
             self._estoque_service = MovimentoEstoqueService(
                 MovimentoEstoqueRepository(self.repository.db)
@@ -80,7 +80,7 @@ class InventarioService:
         return self.repository.listar(skip=skip, limit=limit)
 
     def buscar_por_id(self, inventario_id: int) -> Inventario:
-        """Retorna inventário ativo por id ou levanta exceção."""
+        """Retorna inventário ativo por id ou levanta InventarioNaoEncontrado."""
         inventario = self.repository.buscar_por_id(inventario_id)
 
         if inventario is None:
@@ -141,58 +141,39 @@ class InventarioService:
         ENTRADA ou SAÍDA via MovimentoEstoqueService.
         """
         inventario = self.buscar_por_id(inventario_id)
-        itens = self._listar_itens_do_inventario(inventario_id)
+        itens = self.item_inventario_service.listar_por_inventario(
+            inventario_id
+        )
 
         for item in itens:
-            diferenca = Decimal(str(item.diferenca))
-
-            if diferenca == 0:
-                continue
-
-            if diferenca > 0:
-                tipo = TipoMovimentoEstoque.ENTRADA
-                quantidade = diferenca
-            else:
-                tipo = TipoMovimentoEstoque.SAIDA
-                quantidade = abs(diferenca)
-
-            self.estoque_service.criar(
-                MovimentoEstoqueCreate(
-                    data=inventario.data_inventario,
-                    produto_id=item.produto_id,
-                    quantidade=quantidade,
-                    tipo=tipo,
-                    observacao=f"Ajuste inventário {inventario.id}",
-                )
-            )
+            self._registrar_ajuste_se_necessario(inventario, item)
 
         return inventario
 
-    def _listar_itens_do_inventario(
+    def _registrar_ajuste_se_necessario(
         self,
-        inventario_id: int,
-    ) -> list[ItemInventario]:
-        """Lista itens do inventário via ItemInventarioService (paginado)."""
-        itens: list[ItemInventario] = []
-        skip = 0
-        limit = 100
+        inventario: Inventario,
+        item: ItemInventario,
+    ) -> None:
+        """Registra movimento de ajuste quando a diferença for diferente de zero."""
+        diferenca = Decimal(str(item.diferenca))
 
-        while True:
-            lote = self.item_inventario_service.listar(
-                skip=skip,
-                limit=limit,
+        if diferenca == 0:
+            return
+
+        if diferenca > 0:
+            tipo = TipoMovimentoEstoque.ENTRADA
+            quantidade = diferenca
+        else:
+            tipo = TipoMovimentoEstoque.SAIDA
+            quantidade = abs(diferenca)
+
+        self.estoque_service.criar(
+            MovimentoEstoqueCreate(
+                data=inventario.data_inventario,
+                produto_id=item.produto_id,
+                quantidade=quantidade,
+                tipo=tipo,
+                observacao=f"Ajuste inventário {inventario.id}",
             )
-            if not lote:
-                break
-
-            for item in lote:
-                if item.inventario_id == inventario_id:
-                    itens.append(item)
-
-            if len(lote) < limit:
-                break
-
-            skip += limit
-
-        return itens
-
+        )

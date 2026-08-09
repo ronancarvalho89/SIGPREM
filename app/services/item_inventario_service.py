@@ -1,5 +1,5 @@
 """
-Service de ItemInventario — regras de negócio (COMMIT 0071).
+Service de ItemInventario — regras de negócio (COMMIT 0073).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -38,8 +38,15 @@ class ItemInventarioService:
         """Lista itens ativos com paginação."""
         return self.repository.listar(skip=skip, limit=limit)
 
+    def listar_por_inventario(
+        self,
+        inventario_id: int,
+    ) -> list[ItemInventario]:
+        """Lista itens ativos vinculados a um inventário."""
+        return self.repository.listar_por_inventario(inventario_id)
+
     def buscar_por_id(self, item_id: int) -> ItemInventario:
-        """Retorna item ativo por id ou levanta exceção."""
+        """Retorna item ativo por id ou levanta ItemInventarioNaoEncontrado."""
         item = self.repository.buscar_por_id(item_id)
 
         if item is None:

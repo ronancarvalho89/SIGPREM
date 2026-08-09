@@ -1,5 +1,5 @@
 """
-Repository de ItemInventario — acesso a dados (COMMIT 0066).
+Repository de ItemInventario — acesso a dados (COMMIT 0073).
 
 Responsável exclusivamente por operações de persistência.
 Não contém regras de negócio.
@@ -38,6 +38,21 @@ class ItemInventarioRepository:
             .order_by(ItemInventario.id.desc())
             .offset(skip)
             .limit(limit)
+            .all()
+        )
+
+    def listar_por_inventario(
+        self,
+        inventario_id: int,
+    ) -> list[ItemInventario]:
+        """Lista itens ativos de um inventário (id DESC)."""
+        return (
+            self.db.query(ItemInventario)
+            .filter(
+                ItemInventario.inventario_id == inventario_id,
+                ItemInventario.ativo.is_(True),
+            )
+            .order_by(ItemInventario.id.desc())
             .all()
         )
 
