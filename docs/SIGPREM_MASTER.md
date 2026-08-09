@@ -98,6 +98,72 @@ Lista dos módulos existentes.
 
 Índice dos principais fluxos operacionais.
 
+### Visão Geral
+
+O SIGPREM é estruturado em processos integrados, nos quais uma operação em um módulo pode refletir automaticamente em outros módulos do sistema, mantendo consistência operacional e financeira.
+
+### Fluxo de Compra
+
+Fluxo conceitual:
+
+```text
+Fornecedor
+↓
+Compra de Concreto
+↓
+Movimento Financeiro
+```
+
+### Fluxo de Produção
+
+Fluxo conceitual:
+
+```text
+Compra de Concreto
+↓
+Produção
+↓
+Cálculo da Mão de Obra
+↓
+Movimento de Estoque (ENTRADA)
+↓
+Movimento Financeiro (CUSTO_PRODUÇÃO)
+```
+
+### Fluxo de Venda
+
+Fluxo conceitual:
+
+```text
+Venda
+↓
+Itens da Venda
+↓
+Validação de Estoque
+↓
+Movimento de Estoque (SAÍDA)
+↓
+Movimento Financeiro (VENDA)
+```
+
+### Fluxo Financeiro
+
+As movimentações financeiras são originadas automaticamente pelos módulos do sistema (compra, produção e venda), evitando lançamentos inconsistentes ou desconectados da operação.
+
+### Fluxo do Dashboard
+
+O Dashboard consome exclusivamente informações provenientes dos Services, sem acesso direto ao banco de dados, atuando como orquestrador de indicadores já consolidados.
+
+### Princípios dos Fluxos
+
+Todos os fluxos seguem:
+
+- transação única;
+- rollback em caso de erro;
+- integridade dos dados;
+- sincronização entre módulos;
+- reutilização de regras de negócio.
+
 ## Banco de Dados
 
 Introdução ao modelo de dados.
