@@ -607,6 +607,46 @@ Estratégia de backup e recuperação.
 
 Organização futura dos testes automatizados.
 
+### Objetivo
+
+Os testes têm como finalidade garantir estabilidade, confiabilidade e evolução segura do sistema.
+
+### Testes Unitários
+
+Deverão validar individualmente:
+
+- Services;
+- regras de negócio;
+- cálculos;
+- validações.
+
+### Testes de Integração
+
+Deverão validar:
+
+- integração entre APIs, Services e Repositories;
+- persistência dos dados;
+- transações completas.
+
+### Testes Funcionais
+
+Deverão validar os principais fluxos do ERP:
+
+- Compras;
+- Produção;
+- Vendas;
+- Estoque;
+- Financeiro;
+- Dashboard.
+
+### Regressão
+
+Novas funcionalidades não deverão comprometer comportamentos já implementados.
+
+### Evolução
+
+Futuras versões deverão incorporar testes automatizados ao pipeline de integração contínua.
+
 ## Licenciamento
 
 Informações sobre distribuição e uso.
