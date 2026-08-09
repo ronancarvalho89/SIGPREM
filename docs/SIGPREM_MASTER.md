@@ -102,6 +102,52 @@ Lista dos módulos existentes.
 
 Introdução ao modelo de dados.
 
+### Objetivo do Banco de Dados
+
+O banco de dados do SIGPREM é o repositório central das informações operacionais e gerenciais do sistema. Seu propósito é garantir a integridade, a rastreabilidade e a consistência dos dados ao longo dos processos de cadastro, compra, produção, venda, estoque e financeiro.
+
+### Tecnologia Utilizada
+
+A persistência do projeto utiliza **SQLAlchemy** como ORM, com banco **SQLite** na configuração padrão atual (`DATABASE_URL`), adequado ao estágio de desenvolvimento e evolução controlada do SIGPREM.
+
+### Organização das Entidades
+
+Principais entidades e suas responsabilidades funcionais:
+
+- **Usuário** — autenticação e acesso ao sistema.
+- **Cliente** — cadastro dos clientes atendidos nas vendas.
+- **Fornecedor** — cadastro dos fornecedores relacionados às compras de concreto.
+- **Produto** — cadastro dos itens pré-moldados utilizados em produção, estoque e vendas.
+- **Compra de Concreto** — registro das aquisições de concreto e do saldo disponível para consumo.
+- **Produção** — registro da fabricação de produtos, consumo de concreto e custo de mão de obra.
+- **Venda** — cabeçalho das operações comerciais realizadas com clientes.
+- **ItemVenda** — detalhamento dos produtos vendidos em cada venda.
+- **MovimentoEstoque** — histórico de entradas e saídas de produtos acabados.
+- **MovimentoFinanceiro** — lançamentos financeiros originados de compras, produção, vendas e ajustes.
+
+### Relacionamentos
+
+De forma conceitual, as entidades interagem assim:
+
+- **Compra de Concreto** vincula-se a **Fornecedor** e alimenta o saldo consumido pela **Produção**.
+- **Produção** vincula-se a **Funcionário**, **Produto** e **Compra de Concreto**, gera **MovimentoEstoque** (entrada) e **MovimentoFinanceiro** (custo).
+- **Venda** vincula-se a **Cliente** e possui um ou mais **ItemVenda** associados a **Produto**.
+- Cada **ItemVenda** motiva **MovimentoEstoque** (saída) e a **Venda** gera **MovimentoFinanceiro** (receita).
+- **MovimentoEstoque** e **MovimentoFinanceiro** consolidam, respectivamente, a visão física e financeira dos processos.
+
+### Integridade dos Dados
+
+O sistema adota:
+
+- Soft Delete
+- Integridade referencial
+- Transações centralizadas
+- Consistência entre Estoque, Produção e Financeiro
+
+### Evolução do Banco
+
+Novas entidades deverão seguir o padrão arquitetural adotado pelo projeto (Model → Repository → Service → API), preservando desacoplamento, consistência e rastreabilidade das informações.
+
 ## Regras de Negócio
 
 Índice das regras de negócio.
