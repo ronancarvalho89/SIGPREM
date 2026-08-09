@@ -218,6 +218,54 @@ Novas entidades deverão seguir o padrão arquitetural adotado pelo projeto (Mod
 
 Índice das regras de negócio.
 
+### Compras
+
+Toda compra de concreto gera automaticamente um Movimento Financeiro correspondente, registrando o impacto financeiro da aquisição.
+
+### Produção
+
+Toda produção:
+
+- consome compra de concreto;
+- calcula automaticamente o custo da mão de obra;
+- gera entrada no estoque;
+- gera movimento financeiro de custo;
+- ocorre em transação única.
+
+### Vendas
+
+Toda venda:
+
+- grava o cabeçalho;
+- grava os itens;
+- calcula automaticamente os valores;
+- valida saldo em estoque;
+- gera saída de estoque;
+- gera movimento financeiro;
+- ocorre em transação única.
+
+### Estoque
+
+Todas as entradas e saídas são originadas pelos processos do sistema (produção e venda), evitando movimentações inconsistentes ou desconectadas da operação.
+
+### Financeiro
+
+Os lançamentos financeiros são gerados automaticamente pelos módulos integrados (compra, produção e venda), preservando consistência entre operação e financeiro.
+
+### Dashboard
+
+Todos os indicadores são derivados dos Services existentes, sem lógica própria de cálculo operacional ou consultas diretas ao banco de dados.
+
+### Princípios Gerais
+
+O sistema adota:
+
+- transações atômicas;
+- rollback em caso de erro;
+- centralização das regras de negócio;
+- reutilização de Services;
+- integridade entre módulos.
+
 ## APIs
 
 Organização das APIs disponíveis.
