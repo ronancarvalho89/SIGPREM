@@ -396,6 +396,47 @@ Estrutura dos relatórios existentes e futuros.
 
 Autenticação, autorização e boas práticas.
 
+### Objetivo da Segurança
+
+A segurança do sistema busca garantir integridade, confidencialidade e rastreabilidade das informações operacionais e gerenciais do SIGPREM.
+
+### Autenticação
+
+Todas as APIs protegidas exigem autenticação antes da execução das operações, assegurando que apenas usuários válidos acessem o sistema.
+
+### Autorização
+
+O projeto está preparado para evolução futura com perfis de acesso e controle de permissões, ampliando a granularidade da segurança por funcionalidade.
+
+### Integridade dos Dados
+
+O sistema utiliza:
+
+- transações atômicas;
+- rollback em caso de erro;
+- integridade referencial;
+- sincronização entre módulos.
+
+### Boas Práticas
+
+O projeto adota:
+
+- separação de responsabilidades;
+- centralização das regras de negócio;
+- ausência de acesso direto ao banco pelas APIs;
+- reutilização de Services;
+- Soft Delete quando aplicável.
+
+### Evolução
+
+Futuras versões deverão incorporar:
+
+- perfis de usuários;
+- auditoria;
+- trilha de alterações;
+- políticas de acesso;
+- monitoramento de segurança.
+
 ## Convenções de Desenvolvimento
 
 Padrões adotados no projeto.
