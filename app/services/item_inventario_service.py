@@ -1,5 +1,5 @@
 """
-Service de ItemInventario — regras de negócio (COMMIT 0070).
+Service de ItemInventario — regras de negócio (COMMIT 0071).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -80,4 +80,17 @@ class ItemInventarioService:
         """
         item = self.buscar_por_id(item_id)
         item.quantidade_fisica = quantidade_fisica
+        return self.repository.atualizar(item)
+
+    def calcular_diferenca(self, item_id: int) -> ItemInventario:
+        """
+        Calcula e persiste a diferença do item.
+
+        diferenca = quantidade_fisica - quantidade_sistema
+        """
+        item = self.buscar_por_id(item_id)
+        item.diferenca = (
+            Decimal(str(item.quantidade_fisica))
+            - Decimal(str(item.quantidade_sistema))
+        )
         return self.repository.atualizar(item)
