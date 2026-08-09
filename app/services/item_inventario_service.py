@@ -1,10 +1,11 @@
 """
-Service de ItemInventario — regras de negócio (COMMIT 0066).
+Service de ItemInventario — regras de negócio (COMMIT 0070).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from decimal import Decimal
 from typing import Any
 
 from app.models.item_inventario import ItemInventario
@@ -66,3 +67,17 @@ class ItemInventarioService:
         """Realiza exclusão lógica do item (ativo = False)."""
         item = self.buscar_por_id(item_id)
         return self.repository.inativar(item)
+
+    def registrar_quantidade_fisica(
+        self,
+        item_id: int,
+        quantidade_fisica: Decimal,
+    ) -> ItemInventario:
+        """
+        Registra a quantidade física contada do item.
+
+        Não calcula diferença nem movimenta estoque.
+        """
+        item = self.buscar_por_id(item_id)
+        item.quantidade_fisica = quantidade_fisica
+        return self.repository.atualizar(item)
