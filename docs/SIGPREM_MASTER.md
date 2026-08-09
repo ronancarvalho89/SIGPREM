@@ -453,6 +453,63 @@ Padrão de commits e evolução.
 
 Planejamento das próximas versões.
 
+### Versão 1.0
+
+Funcionalidades concluídas:
+
+- Autenticação
+- Clientes
+- Fornecedores
+- Produtos
+- Compras de Concreto
+- Produção
+- Vendas
+- Itens da Venda
+- Controle de Estoque
+- Controle Financeiro
+- Dashboard Gerencial
+- Relatórios por Período
+- Documentação Técnica Inicial
+
+### Versão 1.1
+
+Funcionalidades planejadas:
+
+- Relatórios em PDF
+- Exportação para Excel
+- Melhorias no Dashboard
+- Filtros avançados
+- Indicadores adicionais
+
+### Versão 1.2
+
+Funcionalidades planejadas:
+
+- Inventário de Estoque
+- Ajustes de Estoque
+- Cancelamentos
+- Estornos
+- Histórico de Alterações
+
+### Versão 2.0
+
+Evolução do produto:
+
+- Controle de Usuários e Perfis
+- Auditoria
+- Logs
+- Configurações Gerais
+- Backup
+- Docker
+- Deploy em Produção
+- Testes Automatizados
+- CI/CD
+- Integração com novos módulos
+
+### Objetivo do Roadmap
+
+O Roadmap orienta a evolução do SIGPREM de forma organizada, incremental e compatível com a arquitetura existente.
+
 ## Histórico de Evolução
 
 Resumo da evolução do sistema.
