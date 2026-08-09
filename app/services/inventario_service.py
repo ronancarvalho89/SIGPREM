@@ -1,5 +1,5 @@
 """
-Service de Inventário — regras de negócio (COMMIT 0068).
+Service de Inventário — regras de negócio (COMMIT 0069).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -12,10 +12,14 @@ from app.models.inventario import Inventario
 from app.models.item_inventario import ItemInventario
 from app.repositories.inventario_repository import InventarioRepository
 from app.repositories.item_inventario_repository import ItemInventarioRepository
+from app.repositories.movimento_estoque_repository import (
+    MovimentoEstoqueRepository,
+)
 from app.schemas.inventario import InventarioCreate
 from app.schemas.inventario import InventarioUpdate
 from app.schemas.item_inventario import ItemInventarioCreate
 from app.services.item_inventario_service import ItemInventarioService
+from app.services.movimento_estoque_service import MovimentoEstoqueService
 
 
 class InventarioNaoEncontrado(Exception):
@@ -29,6 +33,7 @@ class InventarioService:
         """Inicializa o service com o repository."""
         self.repository = repository
         self._item_inventario_service: Optional[ItemInventarioService] = None
+        self._estoque_service: Optional[MovimentoEstoqueService] = None
 
     @property
     def item_inventario_service(self) -> ItemInventarioService:
@@ -43,6 +48,20 @@ class InventarioService:
     def item_inventario_service(self, value: ItemInventarioService) -> None:
         """Permite injeção/substituição em testes."""
         self._item_inventario_service = value
+
+    @property
+    def estoque_service(self) -> MovimentoEstoqueService:
+        """Service de estoque (lazy)."""
+        if self._estoque_service is None:
+            self._estoque_service = MovimentoEstoqueService(
+                MovimentoEstoqueRepository(self.repository.db)
+            )
+        return self._estoque_service
+
+    @estoque_service.setter
+    def estoque_service(self, value: MovimentoEstoqueService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._estoque_service = value
 
     def criar(self, dados: InventarioCreate) -> Inventario:
         """Cria um novo inventário."""
@@ -93,12 +112,20 @@ class InventarioService:
         """
         Associa um ItemInventario a um Inventario existente.
 
-        Valida o inventário e cria o item via ItemInventarioService.
+        Preenche quantidade_sistema com o saldo atual do produto
+        via MovimentoEstoqueService e cria o item via ItemInventarioService.
         """
         inventario = self.buscar_por_id(inventario_id)
 
+        quantidade_sistema = self.estoque_service.saldo_produto(
+            dados.produto_id
+        )
+
         dados_item = dados.model_copy(
-            update={"inventario_id": inventario.id}
+            update={
+                "inventario_id": inventario.id,
+                "quantidade_sistema": quantidade_sistema,
+            }
         )
 
         return self.item_inventario_service.criar(dados_item)
