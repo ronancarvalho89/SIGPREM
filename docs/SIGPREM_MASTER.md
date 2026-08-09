@@ -92,7 +92,22 @@ Visão geral da organização do projeto.
 
 ## Módulos
 
-Lista dos módulos existentes.
+Módulos existentes no backend:
+
+- Autenticação / Usuários
+- Clientes
+- Fornecedores
+- Produtos
+- Funcionários
+- Compras de Concreto
+- Produção
+- Vendas / Itens da Venda
+- Estoque
+- Financeiro
+- Dashboard
+- Relatórios
+- Auditoria
+- Inventário
 
 ## Fluxos do Sistema
 
@@ -150,6 +165,45 @@ Movimento Financeiro (VENDA)
 
 As movimentações financeiras são originadas automaticamente pelos módulos do sistema (compra, produção e venda), evitando lançamentos inconsistentes ou desconectados da operação.
 
+### Fluxo de Inventário
+
+O SIGPREM possui fluxo de inventário físico com:
+
+- criação de inventário;
+- status aberto/concluído;
+- associação de produtos;
+- carregamento do saldo do estoque;
+- registro da quantidade física;
+- cálculo da diferença;
+- conclusão;
+- geração de ajustes de estoque;
+- integração com Auditoria;
+- bloqueio de alterações após conclusão.
+
+Fluxo conceitual:
+
+```text
+Criar Inventário (status = aberto)
+↓
+Adicionar Item
+↓
+Carregar Saldo do Estoque (quantidade_sistema)
+↓
+Registrar Contagem Física
+↓
+Calcular Diferença (física − sistema)
+↓
+Concluir Inventário
+↓
+Gerar Ajuste de Estoque (ENTRADA / SAÍDA / nenhum se zero)
+↓
+Status = concluido
+↓
+Registrar Auditoria
+↓
+Bloquear novas alterações
+```
+
 ### Fluxo do Dashboard
 
 O Dashboard consome exclusivamente informações provenientes dos Services, sem acesso direto ao banco de dados, atuando como orquestrador de indicadores já consolidados.
@@ -190,6 +244,9 @@ Principais entidades e suas responsabilidades funcionais:
 - **ItemVenda** — detalhamento dos produtos vendidos em cada venda.
 - **MovimentoEstoque** — histórico de entradas e saídas de produtos acabados.
 - **MovimentoFinanceiro** — lançamentos financeiros originados de compras, produção, vendas e ajustes.
+- **Inventario** — cabeçalho do inventário físico (`status`: `aberto` | `concluido`), vinculado ao usuário responsável.
+- **ItemInventario** — itens do inventário, com quantidades de sistema e física, diferença e vínculo a produto.
+- **Auditoria** — trilha de operações relevantes registradas pelos Services.
 
 ### Relacionamentos
 
@@ -199,6 +256,8 @@ De forma conceitual, as entidades interagem assim:
 - **Produção** vincula-se a **Funcionário**, **Produto** e **Compra de Concreto**, gera **MovimentoEstoque** (entrada) e **MovimentoFinanceiro** (custo).
 - **Venda** vincula-se a **Cliente** e possui um ou mais **ItemVenda** associados a **Produto**.
 - Cada **ItemVenda** motiva **MovimentoEstoque** (saída) e a **Venda** gera **MovimentoFinanceiro** (receita).
+- **Inventario** vincula-se a **Usuário** e possui um ou mais **ItemInventario** associados a **Produto**.
+- Na conclusão do inventário, diferenças diferentes de zero geram **MovimentoEstoque** (ENTRADA ou SAÍDA).
 - **MovimentoEstoque** e **MovimentoFinanceiro** consolidam, respectivamente, a visão física e financeira dos processos.
 
 ### Integridade dos Dados
@@ -208,7 +267,7 @@ O sistema adota:
 - Soft Delete
 - Integridade referencial
 - Transações centralizadas
-- Consistência entre Estoque, Produção e Financeiro
+- Consistência entre Estoque, Produção, Financeiro e Inventário
 
 ### Evolução do Banco
 
@@ -246,7 +305,21 @@ Toda venda:
 
 ### Estoque
 
-Todas as entradas e saídas são originadas pelos processos do sistema (produção e venda), evitando movimentações inconsistentes ou desconectadas da operação.
+As entradas e saídas são originadas pelos processos do sistema (produção, venda e conclusão de inventário), evitando movimentações inconsistentes ou desconectadas da operação.
+
+### Inventário
+
+O inventário físico segue as regras:
+
+- novo inventário inicia com status `aberto`;
+- a associação de produto carrega `quantidade_sistema` a partir do saldo atual do estoque;
+- a contagem física registra `quantidade_fisica` e calcula `diferenca = quantidade_fisica - quantidade_sistema`;
+- a conclusão só é permitida para inventário aberto;
+- diferença positiva gera movimento de **ENTRADA**;
+- diferença negativa gera movimento de **SAÍDA**;
+- diferença zero não gera movimento;
+- após `status = concluido`, não é permitido adicionar item, alterar contagem/diferença nem concluir novamente;
+- operações relevantes registram auditoria (`modulo = inventario`).
 
 ### Financeiro
 
@@ -327,6 +400,31 @@ Grupos de endpoints atualmente existentes:
 - **Estoque** — CRUD de movimentos de estoque.
 - **Financeiro** — CRUD de movimentos financeiros e fluxo de caixa (geral e por período).
 - **Dashboard** — indicadores gerenciais consolidados.
+- **Auditoria** — consulta autenticada da trilha (`GET /auditoria`).
+- **Inventários** — CRUD do cabeçalho e conclusão do inventário.
+- **Itens de Inventário** — associação de produtos, contagem física e consulta de itens.
+
+#### Inventários
+
+Endpoints implementados:
+
+- `GET /inventarios` — lista inventários ativos (filtro opcional `status`).
+- `GET /inventarios/{inventario_id}` — consulta por id.
+- `POST /inventarios` — cria inventário (`status` inicial `aberto`).
+- `PUT /inventarios/{inventario_id}` — atualiza campos do inventário aberto.
+- `DELETE /inventarios/{inventario_id}` — soft delete (`ativo = False`).
+- `POST /inventario/{inventario_id}/concluir` — conclui o inventário e gera ajustes de estoque.
+
+#### Itens de Inventário
+
+Endpoints implementados:
+
+- `GET /inventario/{inventario_id}/itens` — lista itens do inventário.
+- `POST /inventario/{inventario_id}/itens` — adiciona item via `InventarioService.adicionar_item` (saldo automático).
+- `GET /inventario/item/{item_id}` — consulta item por id.
+- `PUT /inventario/item/{item_id}` — atualiza item (inventário aberto).
+- `DELETE /inventario/item/{item_id}` — soft delete do item (inventário aberto).
+- `POST /inventario/item/{item_id}/contagem` — registra quantidade física e calcula a diferença.
 
 ### Princípios adotados
 
@@ -452,6 +550,8 @@ Os filtros são opcionais e podem ser combinados com a paginação padrão do pr
 
 O histórico de auditoria é preservado: não há exclusão física pela API. Quando aplicável, a inativação lógica (Soft Delete) mantém o registro no banco, sem remoção definitiva.
 
+O módulo Inventário integra-se à Auditoria nas operações relevantes (criação, adição de item, conclusão e ajustes de estoque gerados na conclusão), com `modulo = inventario`.
+
 ### Evolução
 
 Futuras versões deverão incorporar:
@@ -535,6 +635,9 @@ Funcionalidades concluídas:
 - Dashboard Gerencial
 - Relatórios por Período
 - Documentação Técnica Inicial
+- Inventário de Estoque (com ajustes na conclusão)
+- Auditoria (consulta e integração nos Services)
+- Testes automatizados de Auditoria e Inventário
 
 ### Versão 1.1
 
@@ -550,8 +653,6 @@ Funcionalidades planejadas:
 
 Funcionalidades planejadas:
 
-- Inventário de Estoque
-- Ajustes de Estoque
 - Cancelamentos
 - Estornos
 - Histórico de Alterações
@@ -561,13 +662,12 @@ Funcionalidades planejadas:
 Evolução do produto:
 
 - Controle de Usuários e Perfis
-- Auditoria
 - Logs
 - Configurações Gerais
 - Backup
 - Docker
 - Deploy em Produção
-- Testes Automatizados
+- Expansão da cobertura de testes automatizados
 - CI/CD
 - Integração com novos módulos
 
@@ -606,18 +706,20 @@ Foram implantados os principais módulos:
 - Vendas
 - Dashboard
 - Relatórios
+- Auditoria
+- Inventário
 
 ### Consolidação da Arquitetura
 
-A integração entre Produção, Estoque, Financeiro e Vendas passou a ocorrer automaticamente por meio das regras de negócio centralizadas nos Services, com execução em transação única e rollback em caso de erro.
+A integração entre Produção, Estoque, Financeiro, Vendas e Inventário passou a ocorrer automaticamente por meio das regras de negócio centralizadas nos Services, com execução em transação única e rollback em caso de erro.
 
 ### Documentação Técnica
 
-Após a consolidação do backend, iniciou-se a documentação oficial da arquitetura, banco de dados, fluxos, APIs, dashboard, regras de negócio e roadmap.
+Após a consolidação do backend, iniciou-se a documentação oficial da arquitetura, banco de dados, fluxos, APIs, dashboard, regras de negócio e roadmap. O Inventário e a Auditoria passaram a constar como módulos implementados.
 
 ### Próxima Etapa
 
-As próximas evoluções estarão concentradas em funcionalidades Enterprise, testes automatizados, deploy, auditoria, segurança e expansão do produto.
+As próximas evoluções estarão concentradas em funcionalidades Enterprise, expansão da cobertura de testes, deploy, segurança e novos módulos.
 
 ## Deploy
 
@@ -629,15 +731,32 @@ Estratégia de backup e recuperação.
 
 ## Testes
 
-Organização futura dos testes automatizados.
+Organização dos testes automatizados.
 
 ### Objetivo
 
 Os testes têm como finalidade garantir estabilidade, confiabilidade e evolução segura do sistema.
 
+### Infraestrutura
+
+A suíte utiliza `pytest` com `tests/conftest.py` (sessão SQLite em memória e fixtures compartilhadas).
+
+### Cobertura atual
+
+Suíte validada com **38 testes passando**:
+
+- **Auditoria** (`tests/test_auditoria.py`) — 16 testes;
+- **Inventário** (`tests/test_inventario.py`) — 22 testes.
+
+O módulo Inventário possui testes automatizados cobrindo CRUD, status, adição de item com saldo, contagem/diferença, conclusão com ajustes de estoque, bloqueio após conclusão, autenticação da API e regressão da Auditoria.
+
+O fluxo completo do Inventário foi validado:
+
+criar → adicionar item → carregar saldo → contagem → diferença → concluir → ajuste de estoque → auditoria → bloqueio.
+
 ### Testes Unitários
 
-Deverão validar individualmente:
+Validam individualmente, nos módulos cobertos:
 
 - Services;
 - regras de negócio;
@@ -646,30 +765,28 @@ Deverão validar individualmente:
 
 ### Testes de Integração
 
-Deverão validar:
+Validam, nos módulos cobertos:
 
 - integração entre APIs, Services e Repositories;
 - persistência dos dados;
-- transações completas.
+- integrações Inventário ↔ Estoque e Inventário ↔ Auditoria.
 
 ### Testes Funcionais
 
-Deverão validar os principais fluxos do ERP:
+Cobertura funcional atual inclui:
 
-- Compras;
-- Produção;
-- Vendas;
-- Estoque;
-- Financeiro;
-- Dashboard.
+- Auditoria;
+- Inventário (fluxo completo).
+
+Demais fluxos do ERP (Compras, Produção, Vendas, Estoque, Financeiro, Dashboard) permanecem como expansão prevista da suíte.
 
 ### Regressão
 
-Novas funcionalidades não deverão comprometer comportamentos já implementados.
+Novas funcionalidades não deverão comprometer comportamentos já implementados. Alterações no Inventário devem manter a suíte de Auditoria verde.
 
 ### Evolução
 
-Futuras versões deverão incorporar testes automatizados ao pipeline de integração contínua.
+Futuras versões deverão ampliar a cobertura automatizada e incorporar os testes ao pipeline de integração contínua.
 
 ## Licenciamento
 
@@ -677,4 +794,4 @@ Informações sobre distribuição e uso.
 
 ## Próximas Versões
 
-Resumo dos módulos planejados.
+Resumo das evoluções planejadas (ver Roadmap). Inventário e Auditoria já estão implementados.

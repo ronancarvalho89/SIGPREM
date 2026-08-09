@@ -1,7 +1,8 @@
 """
-Model Inventario — inventário de estoque do SIGPREM (COMMIT 0063).
+Model Inventario — inventário de estoque do SIGPREM (EPIC 002).
 
 Representa o cabeçalho de um inventário físico de produtos.
+status: "aberto" (padrão) | "concluido".
 """
 
 from datetime import date
@@ -28,6 +29,12 @@ class Inventario(Entity):
     observacao: Mapped[str] = mapped_column(
         String(500),
         default=""
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="aberto",
     )
 
     usuario_id: Mapped[int] = mapped_column(

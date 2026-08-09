@@ -1,5 +1,5 @@
 """
-Schemas Pydantic do cadastro de Inventários (COMMIT 0065).
+Schemas Pydantic do cadastro de Inventários (EPIC 002).
 """
 
 from datetime import date
@@ -11,7 +11,11 @@ from pydantic import Field
 
 
 class InventarioCreate(BaseModel):
-    """Payload de criação de inventário."""
+    """
+    Payload de criação de inventário.
+
+    status não é aceito aqui — novos inventários iniciam como "aberto".
+    """
 
     data_inventario: date
     usuario_id: int
@@ -19,7 +23,11 @@ class InventarioCreate(BaseModel):
 
 
 class InventarioUpdate(BaseModel):
-    """Payload de atualização parcial de inventário."""
+    """
+    Payload de atualização parcial de inventário.
+
+    status não é aceito — conclusão ocorre apenas via concluir(...).
+    """
 
     data_inventario: Optional[date] = None
     usuario_id: Optional[int] = None
@@ -33,6 +41,7 @@ class InventarioResponse(BaseModel):
     data_inventario: date
     usuario_id: int
     observacao: str
+    status: str
     ativo: bool
     criado_em: datetime
     atualizado_em: datetime

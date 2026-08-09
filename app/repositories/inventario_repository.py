@@ -1,5 +1,5 @@
 """
-Repository de Inventário — acesso a dados (COMMIT 0073).
+Repository de Inventário — acesso a dados (COMMIT 0078).
 
 Responsável exclusivamente por operações de persistência.
 Não contém regras de negócio.
@@ -32,14 +32,16 @@ class InventarioRepository:
         limit: int = 50,
     ) -> list[Inventario]:
         """Lista inventários ativos com paginação (data_inventario DESC)."""
-        return (
-            self.db.query(Inventario)
-            .filter(Inventario.ativo.is_(True))
-            .order_by(Inventario.data_inventario.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        return self._listar(skip=skip, limit=limit)
+
+    def listar_por_status(
+        self,
+        status: str,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> list[Inventario]:
+        """Lista inventários ativos filtrados por status."""
+        return self._listar(skip=skip, limit=limit, status=status)
 
     def buscar_por_id(self, inventario_id: int) -> Optional[Inventario]:
         """Busca inventário ativo pelo identificador."""
@@ -68,3 +70,22 @@ class InventarioRepository:
         self.db.commit()
         self.db.refresh(inventario)
         return inventario
+
+    def _listar(
+        self,
+        skip: int = 0,
+        limit: int = 50,
+        status: Optional[str] = None,
+    ) -> list[Inventario]:
+        """Consulta base de inventários ativos com filtro opcional de status."""
+        query = self.db.query(Inventario).filter(Inventario.ativo.is_(True))
+
+        if status is not None:
+            query = query.filter(Inventario.status == status)
+
+        return (
+            query.order_by(Inventario.data_inventario.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )

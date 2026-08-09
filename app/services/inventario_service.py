@@ -1,5 +1,5 @@
 """
-Service de Inventário — regras de negócio (EPIC 001).
+Service de Inventário — regras de negócio (EPIC 002).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -42,6 +42,10 @@ class InventarioNaoEncontrado(Exception):
 
 class InventarioStatusInvalido(Exception):
     """Status de inventário informado é inválido."""
+
+
+class InventarioJaConcluido(Exception):
+    """Operação inválida porque o inventário já foi concluído."""
 
 
 class InventarioService:
@@ -97,8 +101,11 @@ class InventarioService:
         self._auditoria_service = value
 
     def criar(self, dados: InventarioCreate) -> Inventario:
-        """Cria um novo inventário."""
-        inventario = Inventario(**dados.model_dump())
+        """Cria um novo inventário com status inicial aberto."""
+        inventario = Inventario(
+            **dados.model_dump(),
+            status=STATUS_INVENTARIO_ABERTO,
+        )
         inventario = self.repository.criar(inventario)
         self._registrar_auditoria(
             usuario_id=inventario.usuario_id,
@@ -147,6 +154,7 @@ class InventarioService:
     ) -> Inventario:
         """Atualiza campos informados do inventário (exclude_unset)."""
         inventario = self.buscar_por_id(inventario_id)
+        self._garantir_aberto(inventario)
         campos: dict[str, Any] = dados.model_dump(exclude_unset=True)
 
         for campo, valor in campos.items():
@@ -171,6 +179,7 @@ class InventarioService:
         via MovimentoEstoqueService e cria o item via ItemInventarioService.
         """
         inventario = self.buscar_por_id(inventario_id)
+        self._garantir_aberto(inventario)
 
         quantidade_sistema = self.estoque_service.saldo_produto(
             dados.produto_id
@@ -204,6 +213,8 @@ class InventarioService:
         ENTRADA ou SAÍDA via MovimentoEstoqueService.
         """
         inventario = self.buscar_por_id(inventario_id)
+        self._garantir_aberto(inventario)
+
         itens = self.item_inventario_service.listar_por_inventario(
             inventario_id
         )
@@ -221,6 +232,13 @@ class InventarioService:
             descricao=f"Inventário {inventario.id} concluído.",
         )
         return inventario
+
+    def _garantir_aberto(self, inventario: Inventario) -> None:
+        """Impede alterações em inventário já concluído."""
+        if inventario.status == STATUS_INVENTARIO_CONCLUIDO:
+            raise InventarioJaConcluido(
+                "Inventário já concluído. Operação não permitida."
+            )
 
     def _normalizar_status(self, status: str) -> str:
         """Valida e normaliza o status informado."""

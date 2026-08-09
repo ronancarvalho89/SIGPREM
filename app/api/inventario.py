@@ -1,11 +1,12 @@
 """
-Router de Inventários — endpoints HTTP (COMMIT 0073).
+Router de Inventários — endpoints HTTP (EPIC 002).
 
 Mapeia temporariamente exceções de domínio para HTTPException.
 No futuro existirá um middleware/handler global de exceções.
 """
 
 from typing import NoReturn
+from typing import Optional
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -21,14 +22,14 @@ from app.repositories.inventario_repository import InventarioRepository
 from app.schemas.inventario import InventarioCreate
 from app.schemas.inventario import InventarioResponse
 from app.schemas.inventario import InventarioUpdate
+from app.services.inventario_service import InventarioJaConcluido
 from app.services.inventario_service import InventarioNaoEncontrado
 from app.services.inventario_service import InventarioService
+from app.services.inventario_service import InventarioStatusInvalido
 
 
-router = APIRouter(
-    prefix="/inventarios",
-    tags=["Inventários"],
-)
+router = APIRouter(tags=["Inventários"])
+crud_router = APIRouter(prefix="/inventarios")
 
 
 def _get_service(db: Session) -> InventarioService:
@@ -48,23 +49,46 @@ def _mapear_excecao(exc: Exception) -> NoReturn:
             detail=str(exc),
         ) from exc
 
+    if isinstance(exc, InventarioStatusInvalido):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, InventarioJaConcluido):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
     raise exc
 
 
-@router.get("", response_model=list[InventarioResponse])
+@crud_router.get("", response_model=list[InventarioResponse])
 def listar(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    status_filtro: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> list[InventarioResponse]:
     """Lista inventários ativos com paginação (data_inventario DESC)."""
     _ = usuario
     service = _get_service(db)
-    return service.listar(skip=skip, limit=limit)
+
+    try:
+        if status_filtro is not None:
+            return service.listar_por_status(
+                status_filtro,
+                skip=skip,
+                limit=limit,
+            )
+        return service.listar(skip=skip, limit=limit)
+    except InventarioStatusInvalido as exc:
+        _mapear_excecao(exc)
 
 
-@router.get("/{inventario_id}", response_model=InventarioResponse)
+@crud_router.get("/{inventario_id}", response_model=InventarioResponse)
 def buscar(
     inventario_id: int,
     db: Session = Depends(get_db),
@@ -80,7 +104,7 @@ def buscar(
         _mapear_excecao(exc)
 
 
-@router.post(
+@crud_router.post(
     "",
     response_model=InventarioResponse,
     status_code=status.HTTP_201_CREATED,
@@ -100,7 +124,7 @@ def criar(
         _mapear_excecao(exc)
 
 
-@router.put("/{inventario_id}", response_model=InventarioResponse)
+@crud_router.put("/{inventario_id}", response_model=InventarioResponse)
 def atualizar(
     inventario_id: int,
     dados: InventarioUpdate,
@@ -113,11 +137,11 @@ def atualizar(
 
     try:
         return service.atualizar(inventario_id, dados)
-    except InventarioNaoEncontrado as exc:
+    except (InventarioNaoEncontrado, InventarioJaConcluido) as exc:
         _mapear_excecao(exc)
 
 
-@router.delete("/{inventario_id}", response_model=InventarioResponse)
+@crud_router.delete("/{inventario_id}", response_model=InventarioResponse)
 def excluir(
     inventario_id: int,
     db: Session = Depends(get_db),
@@ -131,3 +155,25 @@ def excluir(
         return service.excluir(inventario_id)
     except InventarioNaoEncontrado as exc:
         _mapear_excecao(exc)
+
+
+@router.post(
+    "/inventario/{inventario_id}/concluir",
+    response_model=InventarioResponse,
+)
+def concluir(
+    inventario_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_usuario),
+) -> InventarioResponse:
+    """Conclui o inventário e gera ajustes de estoque."""
+    _ = usuario
+    service = _get_service(db)
+
+    try:
+        return service.concluir(inventario_id)
+    except (InventarioNaoEncontrado, InventarioJaConcluido) as exc:
+        _mapear_excecao(exc)
+
+
+router.include_router(crud_router)
