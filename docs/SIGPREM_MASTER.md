@@ -400,6 +400,51 @@ Autenticação, autorização e boas práticas.
 
 Padrões adotados no projeto.
 
+### Organização das Camadas
+
+Responsabilidades oficiais:
+
+- **API** — comunicação HTTP, autenticação, validação de parâmetros e delegação ao Service.
+- **Service** — regras de negócio, orquestração e controle transacional.
+- **Repository** — acesso exclusivo a dados, sem regras de negócio.
+- **Model** — representação das entidades e mapeamento com o banco.
+- **Schema** — contratos de entrada e saída da API.
+
+### Criação de Novas Funcionalidades
+
+Novas funcionalidades deverão respeitar a arquitetura existente, evitando lógica duplicada e mantendo baixo acoplamento entre as camadas e os módulos.
+
+### Convenções de Código
+
+O projeto adota:
+
+- nomenclatura consistente;
+- responsabilidade única por classe;
+- reutilização de Services;
+- métodos pequenos e coesos;
+- separação entre regras de negócio e acesso a dados.
+
+### Convenções de Banco
+
+Novas entidades deverão seguir o padrão arquitetural já estabelecido (Model → Repository → Service → API), preservando integridade e consistência dos dados.
+
+### Convenções de APIs
+
+Novos endpoints deverão:
+
+- reutilizar Services;
+- não conter regras de negócio;
+- manter padronização REST;
+- validar entradas antes da chamada ao Service.
+
+### Convenções de Versionamento
+
+O projeto utiliza commits pequenos, incrementais e rastreáveis, preservando histórico claro de evolução.
+
+### Objetivo das Convenções
+
+Essas convenções visam facilitar manutenção, escalabilidade, testes e evolução contínua do sistema.
+
 ## Estratégia de Versionamento
 
 Padrão de commits e evolução.
