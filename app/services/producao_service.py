@@ -1,10 +1,11 @@
 """
-Service de Produção — regras de negócio (COMMIT 0035).
+Service de Produção — regras de negócio (COMMIT 0049).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
 """
 
+from datetime import date
 from decimal import Decimal
 from typing import Any
 from typing import Optional
@@ -224,3 +225,57 @@ class ProducaoService:
         """Realiza exclusão lógica da produção (ativo = False)."""
         producao = self.buscar_por_id(producao_id)
         return self.repository.inativar(producao)
+
+    def relatorio_periodo(
+        self,
+        data_inicial: date,
+        data_final: date,
+    ) -> dict[str, Any]:
+        """
+        Consolida relatório gerencial de produção no período informado.
+        """
+        producoes = self.repository.listar_ativas_por_periodo(
+            data_inicial=data_inicial,
+            data_final=data_final,
+        )
+        return self._consolidar_relatorio(producoes)
+
+    def _consolidar_relatorio(
+        self,
+        producoes: list[Producao],
+    ) -> dict[str, Any]:
+        """Consolida indicadores gerenciais a partir de uma lista de produções."""
+        quantidade_producoes = len(producoes)
+
+        if quantidade_producoes == 0:
+            zero = Decimal("0")
+            return {
+                "quantidade_producoes": 0,
+                "quantidade_total_produzida": zero,
+                "custo_total_producao": zero,
+                "custo_medio_producao": zero,
+                "funcionarios_envolvidos": 0,
+            }
+
+        quantidade_total_produzida = sum(
+            (Decimal(str(p.quantidade_produzida)) for p in producoes),
+            Decimal("0"),
+        )
+        custo_total_producao = sum(
+            (Decimal(str(p.valor_producao)) for p in producoes),
+            Decimal("0"),
+        )
+        custo_medio_producao = (
+            custo_total_producao / Decimal(quantidade_producoes)
+        )
+        funcionarios_envolvidos = len(
+            {p.funcionario_id for p in producoes}
+        )
+
+        return {
+            "quantidade_producoes": quantidade_producoes,
+            "quantidade_total_produzida": quantidade_total_produzida,
+            "custo_total_producao": custo_total_producao,
+            "custo_medio_producao": custo_medio_producao,
+            "funcionarios_envolvidos": funcionarios_envolvidos,
+        }

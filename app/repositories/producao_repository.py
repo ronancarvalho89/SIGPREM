@@ -1,10 +1,11 @@
 """
-Repository de Produção — acesso a dados (COMMIT 0007).
+Repository de Produção — acesso a dados (COMMIT 0049).
 
 Responsável exclusivamente por operações de persistência.
 Não contém regras de negócio.
 """
 
+from datetime import date
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -34,6 +35,23 @@ class ProducaoRepository:
             .order_by(Producao.id.desc())
             .offset(skip)
             .limit(limit)
+            .all()
+        )
+
+    def listar_ativas_por_periodo(
+        self,
+        data_inicial: date,
+        data_final: date,
+    ) -> list[Producao]:
+        """Lista produções ativas no intervalo de datas (inclusivo)."""
+        return (
+            self.db.query(Producao)
+            .filter(
+                Producao.ativo.is_(True),
+                Producao.data >= data_inicial,
+                Producao.data <= data_final,
+            )
+            .order_by(Producao.data.desc())
             .all()
         )
 
