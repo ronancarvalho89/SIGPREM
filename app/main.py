@@ -49,6 +49,7 @@ from app.api.movimentos_financeiros import (
 )
 from app.api.itens_venda import router as itens_venda_router
 from app.api.financeiro import router as financeiro_router
+from app.api.inventario import router as inventario_router
 
 app.include_router(auth_router)
 app.include_router(clientes_router)
@@ -64,3 +65,4 @@ app.include_router(funcionarios_valor_produto_router)
 app.include_router(movimentos_financeiros_router)
 app.include_router(itens_venda_router)
 app.include_router(financeiro_router)
+app.include_router(inventario_router)
