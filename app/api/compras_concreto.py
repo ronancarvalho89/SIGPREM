@@ -22,6 +22,7 @@ from app.schemas.compra_concreto import CompraConcretoCreate
 from app.schemas.compra_concreto import CompraConcretoResponse
 from app.schemas.compra_concreto import CompraConcretoUpdate
 from app.services.compra_concreto_service import CompraConcretoDuplicada
+from app.services.compra_concreto_service import CompraConcretoJaEfetivada
 from app.services.compra_concreto_service import CompraConcretoNaoEncontrada
 from app.services.compra_concreto_service import CompraConcretoService
 
@@ -52,6 +53,12 @@ def _mapear_excecao(exc: Exception) -> NoReturn:
     if isinstance(exc, CompraConcretoDuplicada):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, CompraConcretoJaEfetivada):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
 
@@ -114,13 +121,17 @@ def atualizar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> CompraConcretoResponse:
-    """Atualiza campos informados de uma compra ativa."""
+    """Bloqueado para compra efetivada (Pacote 4.6.3)."""
     _ = usuario
     service = _get_service(db)
 
     try:
         return service.atualizar(compra_id, dados)
-    except (CompraConcretoNaoEncontrada, CompraConcretoDuplicada) as exc:
+    except (
+        CompraConcretoNaoEncontrada,
+        CompraConcretoDuplicada,
+        CompraConcretoJaEfetivada,
+    ) as exc:
         _mapear_excecao(exc)
 
 
@@ -130,11 +141,15 @@ def excluir(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> CompraConcretoResponse:
-    """Exclusão lógica da compra (ativo = False)."""
+    """Bloqueado para compra efetivada (sem estorno nesta etapa)."""
     _ = usuario
     service = _get_service(db)
 
     try:
         return service.excluir(compra_id)
-    except (CompraConcretoNaoEncontrada, CompraConcretoDuplicada) as exc:
+    except (
+        CompraConcretoNaoEncontrada,
+        CompraConcretoDuplicada,
+        CompraConcretoJaEfetivada,
+    ) as exc:
         _mapear_excecao(exc)

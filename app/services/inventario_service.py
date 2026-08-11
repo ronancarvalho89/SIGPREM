@@ -100,10 +100,18 @@ class InventarioService:
         """Permite injeção/substituição em testes."""
         self._auditoria_service = value
 
-    def criar(self, dados: InventarioCreate) -> Inventario:
+    def criar(
+        self,
+        dados: InventarioCreate,
+        usuario_id: Optional[int] = None,
+    ) -> Inventario:
         """Cria um novo inventário com status inicial aberto."""
+        campos = dados.model_dump()
+        if usuario_id is not None:
+            campos["usuario_id"] = usuario_id
+
         inventario = Inventario(
-            **dados.model_dump(),
+            **campos,
             status=STATUS_INVENTARIO_ABERTO,
         )
         inventario = self.repository.criar(inventario)
@@ -297,7 +305,12 @@ class InventarioService:
         descricao: str,
         usuario_id: Optional[int] = None,
     ) -> None:
-        """Registra auditoria da operação de inventário via AuditoriaService."""
+        """
+        Registra auditoria do inventário via AuditoriaService.
+
+        Falha de auditoria não interrompe a operação; sem logs no
+        projeto, a falha permanece engolida neste pacote.
+        """
         try:
             self.auditoria_service.registrar(
                 AuditoriaCreate(

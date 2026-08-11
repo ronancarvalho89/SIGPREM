@@ -1,8 +1,8 @@
 """
-Router de Itens de Venda — endpoints HTTP (COMMIT 0030).
+Router de Itens de Venda — endpoints HTTP (EPIC 004 / Pacote 4.3).
 
-Mapeia temporariamente exceções de domínio para HTTPException.
-No futuro existirá um middleware/handler global de exceções.
+Consulta (GET) permanece disponível.
+POST/PUT/DELETE são bloqueados: itens entram apenas via POST /vendas.
 """
 
 from typing import NoReturn
@@ -23,6 +23,7 @@ from app.schemas.item_venda import ItemVendaResponse
 from app.schemas.item_venda import ItemVendaUpdate
 from app.services.item_venda_service import ItemVendaNaoEncontrado
 from app.services.item_venda_service import ItemVendaService
+from app.services.item_venda_service import OperacaoItemVendaNaoPermitida
 
 
 router = APIRouter(
@@ -45,6 +46,12 @@ def _mapear_excecao(exc: Exception) -> NoReturn:
     if isinstance(exc, ItemVendaNaoEncontrado):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, OperacaoItemVendaNaoPermitida):
+        raise HTTPException(
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
             detail=str(exc),
         ) from exc
 
@@ -90,13 +97,20 @@ def criar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> ItemVendaResponse:
-    """Cadastra um novo item de venda."""
+    """
+    Bloqueado (Pacote 4.3).
+
+    Crie a venda completa com itens via POST /vendas.
+    """
     _ = usuario
     service = _get_service(db)
 
     try:
         return service.criar(dados)
-    except ItemVendaNaoEncontrado as exc:
+    except (
+        ItemVendaNaoEncontrado,
+        OperacaoItemVendaNaoPermitida,
+    ) as exc:
         _mapear_excecao(exc)
 
 
@@ -107,13 +121,20 @@ def atualizar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> ItemVendaResponse:
-    """Atualiza campos informados de um item ativo."""
+    """
+    Bloqueado (Pacote 4.3).
+
+    Alterações com impacto em estoque/total aguardam Pacote 4.6.
+    """
     _ = usuario
     service = _get_service(db)
 
     try:
         return service.atualizar(item_id, dados)
-    except ItemVendaNaoEncontrado as exc:
+    except (
+        ItemVendaNaoEncontrado,
+        OperacaoItemVendaNaoPermitida,
+    ) as exc:
         _mapear_excecao(exc)
 
 
@@ -123,11 +144,18 @@ def excluir(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> ItemVendaResponse:
-    """Exclusão lógica do item (ativo = False)."""
+    """
+    Bloqueado (Pacote 4.3).
+
+    Exclusão com compensação de estoque/financeiro aguarda Pacote 4.6.
+    """
     _ = usuario
     service = _get_service(db)
 
     try:
         return service.excluir(item_id)
-    except ItemVendaNaoEncontrado as exc:
+    except (
+        ItemVendaNaoEncontrado,
+        OperacaoItemVendaNaoPermitida,
+    ) as exc:
         _mapear_excecao(exc)

@@ -24,7 +24,9 @@ from app.repositories.venda_repository import VendaRepository
 from app.schemas.venda import VendaCreate
 from app.schemas.venda import VendaResponse
 from app.schemas.venda import VendaUpdate
+from app.services.venda_service import EstoqueInsuficiente
 from app.services.venda_service import VendaDuplicada
+from app.services.venda_service import VendaJaEfetivada
 from app.services.venda_service import VendaNaoEncontrada
 from app.services.venda_service import VendaService
 
@@ -55,6 +57,19 @@ def _mapear_excecao(exc: Exception) -> NoReturn:
     if isinstance(exc, VendaDuplicada):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, EstoqueInsuficiente):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, VendaJaEfetivada):
+        # Mesmo padrão de InventarioJaConcluido: regra de negócio → 400.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
 
@@ -120,13 +135,16 @@ def criar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> VendaResponse:
-    """Cadastra uma nova venda."""
-    _ = usuario
+    """Cadastra venda completa (itens, estoque e financeiro)."""
     service = _get_service(db)
 
     try:
-        return service.criar(dados)
-    except (VendaNaoEncontrada, VendaDuplicada) as exc:
+        return service.criar(dados, usuario_id=usuario.id)
+    except (
+        VendaNaoEncontrada,
+        VendaDuplicada,
+        EstoqueInsuficiente,
+    ) as exc:
         _mapear_excecao(exc)
 
 
@@ -137,13 +155,21 @@ def atualizar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> VendaResponse:
-    """Atualiza campos informados de uma venda ativa."""
-    _ = usuario
+    """Bloqueado para venda efetivada (Pacote 4.6.1)."""
     service = _get_service(db)
 
     try:
-        return service.atualizar(venda_id, dados)
-    except (VendaNaoEncontrada, VendaDuplicada) as exc:
+        return service.atualizar(
+            venda_id,
+            dados,
+            usuario_id=usuario.id,
+        )
+    except (
+        VendaNaoEncontrada,
+        VendaDuplicada,
+        EstoqueInsuficiente,
+        VendaJaEfetivada,
+    ) as exc:
         _mapear_excecao(exc)
 
 
@@ -153,11 +179,15 @@ def excluir(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> VendaResponse:
-    """Exclusão lógica da venda (ativo = False)."""
-    _ = usuario
+    """Bloqueado para venda efetivada (sem estorno nesta etapa)."""
     service = _get_service(db)
 
     try:
-        return service.excluir(venda_id)
-    except (VendaNaoEncontrada, VendaDuplicada) as exc:
+        return service.excluir(venda_id, usuario_id=usuario.id)
+    except (
+        VendaNaoEncontrada,
+        VendaDuplicada,
+        EstoqueInsuficiente,
+        VendaJaEfetivada,
+    ) as exc:
         _mapear_excecao(exc)

@@ -18,14 +18,19 @@ from app.models.usuario import Usuario
 
 # Models registrados no metadata para create_all (módulos com testes).
 from app.models.auditoria import Auditoria  # noqa: F401
+from app.models.cliente import Cliente  # noqa: F401
 from app.models.compra_concreto import CompraConcreto  # noqa: F401
 from app.models.fornecedor import Fornecedor  # noqa: F401
 from app.models.funcionario import Funcionario  # noqa: F401
+from app.models.funcionario_valor_produto import FuncionarioValorProduto  # noqa: F401
 from app.models.inventario import Inventario  # noqa: F401
 from app.models.item_inventario import ItemInventario  # noqa: F401
+from app.models.item_venda import ItemVenda  # noqa: F401
 from app.models.movimento_estoque import MovimentoEstoque  # noqa: F401
+from app.models.movimento_financeiro import MovimentoFinanceiro  # noqa: F401
 from app.models.produto import Produto  # noqa: F401
 from app.models.producao import Producao  # noqa: F401
+from app.models.venda import Venda  # noqa: F401
 
 
 @pytest.fixture()

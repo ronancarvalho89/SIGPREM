@@ -59,6 +59,7 @@ class MovimentoFinanceiroService:
     def criar(
         self,
         dados: MovimentoFinanceiroCreate,
+        usuario_id: Optional[int] = None,
     ) -> MovimentoFinanceiro:
         """Cria um novo movimento financeiro."""
         movimento = MovimentoFinanceiro(**dados.model_dump())
@@ -70,6 +71,7 @@ class MovimentoFinanceiroService:
                 f"Movimento financeiro {movimento.id} criado. "
                 f"Tipo {movimento.tipo.value}."
             ),
+            usuario_id=usuario_id,
         )
         return movimento
 
@@ -130,7 +132,11 @@ class MovimentoFinanceiroService:
 
         return self.repository.atualizar(movimento)
 
-    def excluir(self, movimento_id: int) -> MovimentoFinanceiro:
+    def excluir(
+        self,
+        movimento_id: int,
+        usuario_id: Optional[int] = None,
+    ) -> MovimentoFinanceiro:
         """Realiza exclusão lógica do movimento (ativo = False)."""
         movimento = self.buscar_por_id(movimento_id)
         movimento = self.repository.inativar(movimento)
@@ -138,6 +144,7 @@ class MovimentoFinanceiroService:
             acao="inativar",
             entidade_id=movimento.id,
             descricao=f"Movimento financeiro {movimento.id} inativado.",
+            usuario_id=usuario_id,
         )
         return movimento
 
@@ -203,7 +210,12 @@ class MovimentoFinanceiroService:
         descricao: str,
         usuario_id: Optional[int] = None,
     ) -> None:
-        """Registra auditoria financeira via AuditoriaService."""
+        """
+        Registra auditoria financeira via AuditoriaService.
+
+        Falha de auditoria não interrompe a operação; sem logs no
+        projeto, a falha permanece engolida neste pacote.
+        """
         try:
             self.auditoria_service.registrar(
                 AuditoriaCreate(

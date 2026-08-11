@@ -131,23 +131,25 @@ def test_paginacao(
 def test_filtro_por_periodo(
     auditoria_service: AuditoriaService,
 ) -> None:
-    agora = datetime.utcnow()
+    """Filtro por período com datas fixas (independente do relógio do sistema)."""
+    data_inicial = date(2026, 8, 9)
+    data_final = date(2026, 8, 10)
     _registrar(
         auditoria_service,
         entidade_id=1,
-        data_hora=agora - timedelta(days=10),
+        data_hora=datetime(2026, 7, 31, 12, 0, 0),
         descricao="antigo",
     )
     recente = _registrar(
         auditoria_service,
         entidade_id=2,
-        data_hora=agora,
+        data_hora=datetime(2026, 8, 10, 12, 0, 0),
         descricao="recente",
     )
 
     resultado = auditoria_service.consultar(
-        data_inicial=date.today() - timedelta(days=1),
-        data_final=date.today(),
+        data_inicial=data_inicial,
+        data_final=data_final,
     )
 
     assert len(resultado) == 1

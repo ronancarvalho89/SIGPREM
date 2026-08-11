@@ -24,9 +24,11 @@ from app.schemas.producao import ProducaoCreate
 from app.schemas.producao import ProducaoResponse
 from app.schemas.producao import ProducaoUpdate
 from app.services.producao_service import ProducaoDadosInvalidos
+from app.services.producao_service import ProducaoJaEfetivada
 from app.services.producao_service import ProducaoNaoEncontrada
 from app.services.producao_service import ProducaoService
 from app.services.producao_service import SaldoConcretoInsuficiente
+from app.services.producao_service import ValorMaoObraNaoCadastrado
 
 
 router = APIRouter(
@@ -59,6 +61,18 @@ def _mapear_excecao(exc: Exception) -> NoReturn:
         ) from exc
 
     if isinstance(exc, ProducaoDadosInvalidos):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, ValorMaoObraNaoCadastrado):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    if isinstance(exc, ProducaoJaEfetivada):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -116,6 +130,7 @@ def buscar(
         ProducaoNaoEncontrada,
         SaldoConcretoInsuficiente,
         ProducaoDadosInvalidos,
+        ValorMaoObraNaoCadastrado,
     ) as exc:
         _mapear_excecao(exc)
 
@@ -131,15 +146,15 @@ def criar(
     usuario: Usuario = Depends(get_current_usuario),
 ) -> ProducaoResponse:
     """Registra uma nova produção."""
-    _ = usuario
     service = _get_service(db)
 
     try:
-        return service.criar(dados)
+        return service.criar(dados, usuario_id=usuario.id)
     except (
         ProducaoNaoEncontrada,
         SaldoConcretoInsuficiente,
         ProducaoDadosInvalidos,
+        ValorMaoObraNaoCadastrado,
     ) as exc:
         _mapear_excecao(exc)
 
@@ -151,7 +166,7 @@ def atualizar(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> ProducaoResponse:
-    """Atualiza campos permitidos de uma produção ativa."""
+    """Bloqueado para produção efetivada (Pacote 4.6.2)."""
     _ = usuario
     service = _get_service(db)
 
@@ -161,6 +176,8 @@ def atualizar(
         ProducaoNaoEncontrada,
         SaldoConcretoInsuficiente,
         ProducaoDadosInvalidos,
+        ValorMaoObraNaoCadastrado,
+        ProducaoJaEfetivada,
     ) as exc:
         _mapear_excecao(exc)
 
@@ -171,15 +188,16 @@ def excluir(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_usuario),
 ) -> ProducaoResponse:
-    """Exclusão lógica da produção (ativo = False)."""
-    _ = usuario
+    """Bloqueado para produção efetivada (sem estorno nesta etapa)."""
     service = _get_service(db)
 
     try:
-        return service.excluir(producao_id)
+        return service.excluir(producao_id, usuario_id=usuario.id)
     except (
         ProducaoNaoEncontrada,
         SaldoConcretoInsuficiente,
         ProducaoDadosInvalidos,
+        ValorMaoObraNaoCadastrado,
+        ProducaoJaEfetivada,
     ) as exc:
         _mapear_excecao(exc)

@@ -1,5 +1,5 @@
 """
-Schemas Pydantic do cadastro de Vendas (COMMIT 0011).
+Schemas Pydantic do cadastro de Vendas (EPIC 004).
 """
 
 from datetime import date
@@ -12,8 +12,21 @@ from pydantic import BaseModel
 from pydantic import Field
 
 
+class ItemVendaCreateNested(BaseModel):
+    """Item informado na criação da venda (sem venda_id)."""
+
+    produto_id: int
+    quantidade: Decimal
+    valor_unitario: Decimal
+
+
 class VendaCreate(BaseModel):
-    """Payload de criação de venda."""
+    """
+    Payload de criação de venda completa.
+
+    itens é obrigatório — o total efetivo é calculado pelo Service.
+    valor_total no payload é ignorado quando há itens (compatibilidade).
+    """
 
     cliente_id: int
     data_venda: date
@@ -21,6 +34,7 @@ class VendaCreate(BaseModel):
     valor_total: Decimal = Decimal("0")
     observacoes: str = Field(default="", max_length=500)
     status: str = Field(default="ABERTA", max_length=30)
+    itens: list[ItemVendaCreateNested] = Field(..., min_length=1)
 
 
 class VendaUpdate(BaseModel):

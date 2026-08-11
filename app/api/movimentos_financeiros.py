@@ -95,11 +95,10 @@ def criar(
     usuario: Usuario = Depends(get_current_usuario),
 ) -> MovimentoFinanceiroResponse:
     """Cadastra um novo movimento financeiro."""
-    _ = usuario
     service = _get_service(db)
 
     try:
-        return service.criar(dados)
+        return service.criar(dados, usuario_id=usuario.id)
     except MovimentoFinanceiroNaoEncontrado as exc:
         _mapear_excecao(exc)
 
@@ -128,10 +127,9 @@ def excluir(
     usuario: Usuario = Depends(get_current_usuario),
 ) -> MovimentoFinanceiroResponse:
     """Exclusão lógica do movimento financeiro (ativo = False)."""
-    _ = usuario
     service = _get_service(db)
 
     try:
-        return service.excluir(movimento_id)
+        return service.excluir(movimento_id, usuario_id=usuario.id)
     except MovimentoFinanceiroNaoEncontrado as exc:
         _mapear_excecao(exc)

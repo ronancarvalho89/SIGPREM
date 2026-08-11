@@ -11,7 +11,6 @@ from typing import Any
 from typing import Optional
 
 from app.models.compra_concreto import CompraConcreto
-from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.produto import Produto
@@ -20,14 +19,19 @@ from app.repositories.auditoria_repository import AuditoriaRepository
 from app.repositories.funcionario_valor_produto_repository import (
     FuncionarioValorProdutoRepository,
 )
+from app.repositories.movimento_estoque_repository import (
+    MovimentoEstoqueRepository,
+)
 from app.repositories.movimento_financeiro_repository import (
     MovimentoFinanceiroRepository,
 )
 from app.repositories.producao_repository import ProducaoRepository
 from app.schemas.auditoria import AuditoriaCreate
+from app.schemas.movimento_estoque import MovimentoEstoqueCreate
 from app.schemas.producao import ProducaoCreate
 from app.schemas.producao import ProducaoUpdate
 from app.services.auditoria_service import AuditoriaService
+from app.services.movimento_estoque_service import MovimentoEstoqueService
 from app.services.movimento_financeiro_service import MovimentoFinanceiroService
 
 
@@ -59,6 +63,25 @@ class ValorMaoObraNaoCadastrado(Exception):
         super().__init__(message)
 
 
+class ProducaoJaEfetivada(Exception):
+    """
+    Produção com efeitos aplicados não pode ser alterada nem inativada.
+
+    Efeitos (saldo concreto, estoque, financeiro) ocorrem na criação.
+    Cancelamento/estorno fica para operação específica futura.
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+_MSG_PRODUCAO_EFETIVADA = (
+    "Produção efetivada não pode ser alterada nem inativada. "
+    "Utilize futuramente a operação de cancelamento/estorno."
+)
+
+
 class ProducaoService:
     """Regras de negócio do cadastro de produção."""
 
@@ -68,8 +91,23 @@ class ProducaoService:
         self._valor_repository: Optional[
             FuncionarioValorProdutoRepository
         ] = None
+        self._estoque_service: Optional[MovimentoEstoqueService] = None
         self._financeiro_service: Optional[MovimentoFinanceiroService] = None
         self._auditoria_service: Optional[AuditoriaService] = None
+
+    @property
+    def estoque_service(self) -> MovimentoEstoqueService:
+        """Service de estoque (lazy) compartilhando a mesma sessão."""
+        if self._estoque_service is None:
+            self._estoque_service = MovimentoEstoqueService(
+                MovimentoEstoqueRepository(self.repository.db)
+            )
+        return self._estoque_service
+
+    @estoque_service.setter
+    def estoque_service(self, value: MovimentoEstoqueService) -> None:
+        """Permite injeção/substituição em testes."""
+        self._estoque_service = value
 
     @property
     def valor_repository(self) -> FuncionarioValorProdutoRepository:
@@ -116,7 +154,11 @@ class ProducaoService:
         """Permite injeção/substituição em testes."""
         self._auditoria_service = value
 
-    def criar(self, dados: ProducaoCreate) -> Producao:
+    def criar(
+        self,
+        dados: ProducaoCreate,
+        usuario_id: Optional[int] = None,
+    ) -> Producao:
         """
         Cria produção, consome concreto, calcula mão de obra,
         gera entrada de estoque e custo financeiro na mesma transação.
@@ -182,16 +224,16 @@ class ProducaoService:
             self.repository.db.add(producao)
             self.repository.db.flush()
 
-            movimento_estoque = MovimentoEstoque(
-                data=producao.data,
-                produto_id=producao.produto_id,
-                quantidade=producao.quantidade_produzida,
-                tipo=TipoMovimentoEstoque.ENTRADA,
-                producao_id=producao.id,
-                observacao="Entrada automática gerada pela produção.",
+            self.estoque_service.registrar(
+                MovimentoEstoqueCreate(
+                    data=producao.data,
+                    produto_id=producao.produto_id,
+                    quantidade=producao.quantidade_produzida,
+                    tipo=TipoMovimentoEstoque.ENTRADA,
+                    producao_id=producao.id,
+                    observacao="Entrada automática gerada pela produção.",
+                )
             )
-
-            self.repository.db.add(movimento_estoque)
 
             # Tipo disponível no model: PRODUCAO (custo de produção / mão de obra).
             # Model sem funcionario_id/producao_id — referências na observação.
@@ -211,6 +253,7 @@ class ProducaoService:
                 acao="criar",
                 entidade_id=producao.id,
                 descricao=f"Produção {producao.id} criada.",
+                usuario_id=usuario_id,
             )
             return producao
 
@@ -236,25 +279,30 @@ class ProducaoService:
         producao_id: int,
         dados: ProducaoUpdate,
     ) -> Producao:
-        """Atualiza campos permitidos da produção (exclude_unset)."""
+        """
+        Bloqueado para produção efetivada (Pacote 4.6.2).
+
+        Qualquer produção ativa já possui efeitos de concreto, estoque
+        e financeiro aplicados na criação.
+        """
+        _ = dados
         producao = self.buscar_por_id(producao_id)
-        campos: dict[str, Any] = dados.model_dump(exclude_unset=True)
+        self._garantir_nao_efetivada(producao)
 
-        for campo, valor in campos.items():
-            setattr(producao, campo, valor)
+    def excluir(
+        self,
+        producao_id: int,
+        usuario_id: Optional[int] = None,
+    ) -> Producao:
+        """
+        Bloqueado para produção efetivada (Pacote 4.6.2).
 
-        return self.repository.atualizar(producao)
-
-    def excluir(self, producao_id: int) -> Producao:
-        """Realiza exclusão lógica da produção (ativo = False)."""
+        Soft delete sem estorno deixaria concreto, estoque e financeiro
+        inconsistentes.
+        """
+        _ = usuario_id
         producao = self.buscar_por_id(producao_id)
-        producao = self.repository.inativar(producao)
-        self._registrar_auditoria(
-            acao="inativar",
-            entidade_id=producao.id,
-            descricao=f"Produção {producao.id} inativada.",
-        )
-        return producao
+        self._garantir_nao_efetivada(producao)
 
     def relatorio_periodo(
         self,
@@ -310,6 +358,16 @@ class ProducaoService:
             "funcionarios_envolvidos": funcionarios_envolvidos,
         }
 
+    def _garantir_nao_efetivada(self, producao: Producao) -> None:
+        """
+        Impede update/delete de produção efetivada.
+
+        Produção ativa encontrada por buscar_por_id já passou pela
+        criação completa (concreto + estoque + financeiro).
+        """
+        _ = producao
+        raise ProducaoJaEfetivada(_MSG_PRODUCAO_EFETIVADA)
+
     def _registrar_auditoria(
         self,
         acao: str,
@@ -317,7 +375,12 @@ class ProducaoService:
         descricao: str,
         usuario_id: Optional[int] = None,
     ) -> None:
-        """Registra auditoria da operação de produção via AuditoriaService."""
+        """
+        Registra auditoria da produção via AuditoriaService.
+
+        Falha de auditoria não interrompe a operação; sem logs no
+        projeto, a falha permanece engolida neste pacote.
+        """
         try:
             self.auditoria_service.registrar(
                 AuditoriaCreate(

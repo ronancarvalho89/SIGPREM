@@ -279,7 +279,7 @@ Novas entidades deverão seguir o padrão arquitetural adotado pelo projeto (Mod
 
 ### Compras
 
-Toda compra de concreto gera automaticamente um Movimento Financeiro correspondente, registrando o impacto financeiro da aquisição.
+Toda compra de concreto gera automaticamente um Movimento Financeiro correspondente, registrando o impacto financeiro da aquisição (`saldo` inicial = quantidade recebida). Compra ativa (efetivada) **não** permite update nem delete genéricos (Política A — EPIC 004); cancelamento/estorno fica para etapa futura.
 
 ### Produção
 
@@ -287,25 +287,35 @@ Toda produção:
 
 - consome compra de concreto;
 - calcula automaticamente o custo da mão de obra;
-- gera entrada no estoque;
+- gera entrada no estoque via `MovimentoEstoqueService.registrar()` (sem commit próprio);
 - gera movimento financeiro de custo;
+- registra auditoria (com `usuario_id` quando a API autenticada propaga);
 - ocorre em transação única.
+
+Produção ativa (efetivada) **não** permite update nem delete genéricos (Política A — EPIC 004).
 
 ### Vendas
 
-Toda venda:
+Toda venda (via `POST /vendas` com `itens[]`):
 
 - grava o cabeçalho;
 - grava os itens;
-- calcula automaticamente os valores;
+- calcula automaticamente o `valor_total` pelos itens (Service);
 - valida saldo em estoque;
-- gera saída de estoque;
+- gera saída de estoque via `MovimentoEstoqueService.registrar()`;
 - gera movimento financeiro;
+- registra auditoria (com `usuario_id` quando a API autenticada propaga);
 - ocorre em transação única.
+
+Venda ativa (efetivada) **não** permite update nem delete genéricos (Política A — EPIC 004). Itens não são mutáveis por `/itens-venda` (somente consulta).
 
 ### Estoque
 
 As entradas e saídas são originadas pelos processos do sistema (produção, venda e conclusão de inventário), evitando movimentações inconsistentes ou desconectadas da operação.
+
+- `MovimentoEstoqueService.registrar()` — adiciona à sessão **sem commit** (uso em Venda/Produção).
+- `MovimentoEstoqueService.criar()` — `registrar()` + commit (CRUD da API e ajustes de inventário).
+- Services de domínio **não** fazem `db.add(MovimentoEstoque)` direto.
 
 ### Inventário
 
@@ -393,10 +403,10 @@ Grupos de endpoints atualmente existentes:
 - **Clientes** — CRUD do cadastro de clientes.
 - **Fornecedores** — CRUD do cadastro de fornecedores.
 - **Produtos** — CRUD do cadastro de produtos.
-- **Compras** — CRUD de compras de concreto.
-- **Produção** — CRUD de produção e relatório por período.
-- **Vendas** — CRUD de vendas e relatório por período.
-- **Itens da Venda** — CRUD dos itens associados às vendas.
+- **Compras** — criação/consulta de compras de concreto (update/delete bloqueados após efetivação).
+- **Produção** — criação/consulta e relatório por período (update/delete bloqueados após efetivação).
+- **Vendas** — criação completa com `itens[]`, consulta e relatório por período (update/delete bloqueados após efetivação).
+- **Itens da Venda** — somente consulta/listagem (`GET`); mutações retornam HTTP 405 (criação via `POST /vendas`).
 - **Estoque** — CRUD de movimentos de estoque.
 - **Financeiro** — CRUD de movimentos financeiros e fluxo de caixa (geral e por período).
 - **Dashboard** — indicadores gerenciais consolidados.
@@ -533,9 +543,11 @@ A finalidade da auditoria é preservar o histórico operacional, apoiar investig
 
 O registro das operações relevantes é realizado pelos Services internos, por meio do `AuditoriaService.registrar(...)`. A API pública de Auditoria é exclusivamente de consulta e não permite criação, alteração ou exclusão de registros.
 
-Quando o usuário estiver disponível no contexto da operação, o registro identifica o responsável por meio do campo `usuario_id`.
+Quando o usuário estiver disponível no contexto da operação, o registro identifica o responsável por meio do campo `usuario_id`. A API autenticada propaga `usuario.id` para Venda, Produção, Inventário e Movimento Financeiro.
 
-Quando a operação ocorrer fora de um contexto de usuário autenticado, o registro poderá ser gerado sem `usuario_id`, preservando a trilha mesmo sem identificação individual.
+Quando a operação ocorrer fora de um contexto de usuário autenticado (chamada interna/teste), o registro poderá ser gerado sem `usuario_id`, preservando a trilha mesmo sem identificação individual.
+
+Falha ao registrar auditoria **não** faz rollback da operação comercial (comportamento atual; engolida no Service — logging estruturado fica no roadmap). O campo `entidade_id` permanece Integer; UUID de Venda ainda é truncado nesse campo, com o identificador completo na `descricao` (migration futura).
 
 A consulta autenticada (`GET /auditoria`) permite filtrar a trilha por:
 
@@ -637,7 +649,8 @@ Funcionalidades concluídas:
 - Documentação Técnica Inicial
 - Inventário de Estoque (com ajustes na conclusão)
 - Auditoria (consulta e integração nos Services)
-- Testes automatizados de Auditoria e Inventário
+- Testes automatizados (EPIC 003) — fluxos críticos
+- Correção dos fluxos comerciais (EPIC 004) — estoque unificado, Venda completa via API, `/itens-venda` somente leitura, `usuario_id` na auditoria, bloqueio de update/delete em Compra/Produção/Venda efetivadas
 
 ### Versão 1.1
 
@@ -717,9 +730,14 @@ A integração entre Produção, Estoque, Financeiro, Vendas e Inventário passo
 
 Após a consolidação do backend, iniciou-se a documentação oficial da arquitetura, banco de dados, fluxos, APIs, dashboard, regras de negócio e roadmap. O Inventário e a Auditoria passaram a constar como módulos implementados.
 
+### EPIC 003 e EPIC 004
+
+- **EPIC 003** — testes dos fluxos críticos (compras, produção, vendas, estoque, financeiro, inventário, auditoria, auth, cadastros, dashboard).
+- **EPIC 004** — unificação de estoque (`registrar`), Venda completa via API, restrição de `/itens-venda`, mapeamento de exceções, propagação de `usuario_id`, Política A de bloqueio de update/delete em Compra/Produção/Venda efetivadas.
+
 ### Próxima Etapa
 
-As próximas evoluções estarão concentradas em funcionalidades Enterprise, expansão da cobertura de testes, deploy, segurança e novos módulos.
+As próximas evoluções estarão concentradas em cancelamento/estorno (Política B), `entidade_id` string (migration), logs, RBAC, Docker/Alembic, deploy e módulos Enterprise.
 
 ## Deploy
 
@@ -743,16 +761,19 @@ A suíte utiliza `pytest` com `tests/conftest.py` (sessão SQLite em memória e 
 
 ### Cobertura atual
 
-Suíte validada com **38 testes passando**:
+Suíte validada com **153 testes passando** (EPIC 003 + EPIC 004):
 
-- **Auditoria** (`tests/test_auditoria.py`) — 16 testes;
-- **Inventário** (`tests/test_inventario.py`) — 22 testes.
+- Autenticação, cadastros, dashboard;
+- Compras de concreto, produção, vendas, itens de venda (consulta);
+- Estoque, financeiro, inventário, auditoria.
 
-O módulo Inventário possui testes automatizados cobrindo CRUD, status, adição de item com saldo, contagem/diferença, conclusão com ajustes de estoque, bloqueio após conclusão, autenticação da API e regressão da Auditoria.
+Destaques:
 
-O fluxo completo do Inventário foi validado:
-
-criar → adicionar item → carregar saldo → contagem → diferença → concluir → ajuste de estoque → auditoria → bloqueio.
+- **Inventário** — fluxo completo (criar → item → contagem → concluir → ajuste → auditoria → bloqueio);
+- **Venda** — `POST /vendas` com itens, estoque, financeiro, auditoria, rollback e bloqueio de update/delete;
+- **Produção / Compra** — efeitos na criação e bloqueio de update/delete após efetivação;
+- **Estoque** — `registrar()` sem commit vs `criar()` com commit;
+- **`/itens-venda`** — somente GET (mutação → 405).
 
 ### Testes Unitários
 
@@ -761,32 +782,29 @@ Validam individualmente, nos módulos cobertos:
 - Services;
 - regras de negócio;
 - cálculos;
-- validações.
+- validações;
+- bloqueios de domínio (venda/produção/compra efetivadas).
 
 ### Testes de Integração
 
 Validam, nos módulos cobertos:
 
 - integração entre APIs, Services e Repositories;
-- persistência dos dados;
-- integrações Inventário ↔ Estoque e Inventário ↔ Auditoria.
+- persistência e rollback transacional;
+- integrações Venda/Produção/Compra ↔ Estoque ↔ Financeiro ↔ Auditoria;
+- Inventário ↔ Estoque e Inventário ↔ Auditoria.
 
 ### Testes Funcionais
 
-Cobertura funcional atual inclui:
-
-- Auditoria;
-- Inventário (fluxo completo).
-
-Demais fluxos do ERP (Compras, Produção, Vendas, Estoque, Financeiro, Dashboard) permanecem como expansão prevista da suíte.
+Cobertura funcional atual inclui Auditoria, Inventário, Compras, Produção, Vendas, Estoque, Financeiro, Dashboard e autenticação/cadastros.
 
 ### Regressão
 
-Novas funcionalidades não deverão comprometer comportamentos já implementados. Alterações no Inventário devem manter a suíte de Auditoria verde.
+Novas funcionalidades não deverão comprometer comportamentos já implementados. A suíte completa (`pytest`) deve permanecer verde.
 
 ### Evolução
 
-Futuras versões deverão ampliar a cobertura automatizada e incorporar os testes ao pipeline de integração contínua.
+Futuras versões deverão incorporar os testes ao pipeline de integração contínua e cobrir cancelamento/estorno (Política B).
 
 ## Licenciamento
 

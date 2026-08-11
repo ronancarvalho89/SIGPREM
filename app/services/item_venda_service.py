@@ -1,11 +1,14 @@
 """
-Service de ItemVenda — regras de negócio (COMMIT 0029).
+Service de ItemVenda — regras de negócio (EPIC 004 / Pacote 4.3).
 
-Não lança HTTPException. Exceções de domínio são mapeadas na API.
-No futuro existirá um middleware/handler global de exceções.
+Itens de venda fazem parte do agregado Venda.
+Criação completa (itens + estoque + financeiro) ocorre apenas via
+VendaService.criar / POST /vendas.
+
+Mutações independentes (criar/atualizar/excluir) são bloqueadas para
+evitar inconsistência de estoque, total e financeiro.
+Estorno/ajuste de itens existentes fica para o Pacote 4.6.
 """
-
-from typing import Any
 
 from app.models.item_venda import ItemVenda
 from app.repositories.item_venda_repository import ItemVendaRepository
@@ -17,17 +20,33 @@ class ItemVendaNaoEncontrado(Exception):
     """Item de venda ativo não encontrado."""
 
 
+class OperacaoItemVendaNaoPermitida(Exception):
+    """
+    Mutação independente de ItemVenda não é permitida.
+
+    Use POST /vendas com itens aninhados para criar a venda completa.
+    """
+
+
+_MSG_MUTACAO = (
+    "Itens de venda não podem ser criados, alterados ou excluídos "
+    "independentemente. Utilize POST /vendas com itens aninhados. "
+    "Ajustes com estorno de estoque/financeiro serão tratados na "
+    "política de update/delete da Venda."
+)
+
+
 class ItemVendaService:
-    """Regras de negócio do cadastro de itens de venda."""
+    """Consulta de itens de venda; mutações indep. bloqueadas."""
 
     def __init__(self, repository: ItemVendaRepository) -> None:
         """Inicializa o service com o repository."""
         self.repository = repository
 
     def criar(self, dados: ItemVendaCreate) -> ItemVenda:
-        """Cria um novo item de venda."""
-        item = ItemVenda(**dados.model_dump())
-        return self.repository.criar(item)
+        """Bloqueado: criação somente via VendaService.criar."""
+        _ = dados
+        raise OperacaoItemVendaNaoPermitida(_MSG_MUTACAO)
 
     def listar(
         self,
@@ -51,16 +70,21 @@ class ItemVendaService:
         item_id: int,
         dados: ItemVendaUpdate,
     ) -> ItemVenda:
-        """Atualiza campos informados do item (exclude_unset)."""
-        item = self.buscar_por_id(item_id)
-        campos: dict[str, Any] = dados.model_dump(exclude_unset=True)
+        """
+        Bloqueado neste pacote.
 
-        for campo, valor in campos.items():
-            setattr(item, campo, valor)
-
-        return self.repository.atualizar(item)
+        Alterar quantidade/preço exigiria estorno e nova baixa —
+        política do Pacote 4.6.
+        """
+        _ = item_id, dados
+        raise OperacaoItemVendaNaoPermitida(_MSG_MUTACAO)
 
     def excluir(self, item_id: int) -> ItemVenda:
-        """Realiza exclusão lógica do item (ativo = False)."""
-        item = self.buscar_por_id(item_id)
-        return self.repository.inativar(item)
+        """
+        Bloqueado neste pacote.
+
+        Inativar item sem compensar estoque/financeiro deixa a venda
+        inconsistente — política do Pacote 4.6.
+        """
+        _ = item_id
+        raise OperacaoItemVendaNaoPermitida(_MSG_MUTACAO)

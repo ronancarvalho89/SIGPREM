@@ -1,5 +1,5 @@
 """
-Service de Movimento de Estoque — regras de negócio (COMMIT 0034).
+Service de Movimento de Estoque — regras de negócio (EPIC 004).
 
 Não lança HTTPException. Exceções de domínio são mapeadas na API.
 No futuro existirá um middleware/handler global de exceções.
@@ -28,10 +28,36 @@ class MovimentoEstoqueService:
         """Inicializa o service com o repository."""
         self.repository = repository
 
-    def criar(self, dados: MovimentoEstoqueCreate) -> MovimentoEstoque:
-        """Cria um novo movimento de estoque."""
+    def registrar(
+        self,
+        dados: MovimentoEstoqueCreate,
+        *,
+        flush: bool = False,
+    ) -> MovimentoEstoque:
+        """
+        Adiciona um movimento de estoque à sessão atual.
+
+        Não realiza commit — permanece na transação do chamador.
+        Não gera efeitos financeiros nem auditoria.
+        """
         movimento = MovimentoEstoque(**dados.model_dump())
-        return self.repository.criar(movimento)
+        self.repository.db.add(movimento)
+
+        if flush:
+            self.repository.db.flush()
+
+        return movimento
+
+    def criar(self, dados: MovimentoEstoqueCreate) -> MovimentoEstoque:
+        """
+        Cria e confirma (commit) um novo movimento de estoque.
+
+        Equivale a registrar() seguido de commit — usado pelo CRUD da API.
+        """
+        movimento = self.registrar(dados)
+        self.repository.db.commit()
+        self.repository.db.refresh(movimento)
+        return movimento
 
     def listar(
         self,

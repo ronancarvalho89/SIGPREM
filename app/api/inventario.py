@@ -115,11 +115,10 @@ def criar(
     usuario: Usuario = Depends(get_current_usuario),
 ) -> InventarioResponse:
     """Cadastra um novo inventário."""
-    _ = usuario
     service = _get_service(db)
 
     try:
-        return service.criar(dados)
+        return service.criar(dados, usuario_id=usuario.id)
     except InventarioNaoEncontrado as exc:
         _mapear_excecao(exc)
 

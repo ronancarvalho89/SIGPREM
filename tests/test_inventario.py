@@ -247,6 +247,36 @@ def test_api_resposta_expoe_status(
     assert corpo["status"] == "aberto"
 
 
+def test_api_auditoria_recebe_usuario_id(
+    client_auth: TestClient,
+    db_session: Session,
+    usuario: Usuario,
+) -> None:
+    """API autenticada propaga usuario_id para Auditoria (ignora payload)."""
+    resposta = client_auth.post(
+        "/inventarios",
+        json={
+            "data_inventario": "2026-08-09",
+            "usuario_id": 999999,
+            "observacao": "api auditoria usuario",
+        },
+    )
+    assert resposta.status_code == 201
+    inventario_id = resposta.json()["id"]
+    assert resposta.json()["usuario_id"] == usuario.id
+
+    auditoria = (
+        db_session.query(Auditoria)
+        .filter(
+            Auditoria.modulo == "inventario",
+            Auditoria.acao == "criar",
+            Auditoria.entidade_id == inventario_id,
+        )
+        .one()
+    )
+    assert auditoria.usuario_id == usuario.id
+
+
 def test_filtro_status_aberto(
     inventario_service: InventarioService,
     usuario: Usuario,

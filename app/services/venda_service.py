@@ -12,7 +12,6 @@ from typing import Optional
 from uuid import UUID
 
 from app.models.item_venda import ItemVenda
-from app.models.movimento_estoque import MovimentoEstoque
 from app.models.movimento_estoque import TipoMovimentoEstoque
 from app.models.movimento_financeiro import TipoMovimentoFinanceiro
 from app.models.venda import Venda
@@ -25,6 +24,7 @@ from app.repositories.movimento_financeiro_repository import (
 )
 from app.repositories.venda_repository import VendaRepository
 from app.schemas.auditoria import AuditoriaCreate
+from app.schemas.movimento_estoque import MovimentoEstoqueCreate
 from app.schemas.venda import VendaCreate
 from app.schemas.venda import VendaUpdate
 from app.services.auditoria_service import AuditoriaService
@@ -50,6 +50,25 @@ class EstoqueInsuficiente(Exception):
     def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(message)
+
+
+class VendaJaEfetivada(Exception):
+    """
+    Venda com efeitos aplicados não pode ser alterada nem inativada.
+
+    Efeitos (itens, estoque, financeiro) ocorrem na criação.
+    Cancelamento/estorno fica para operação específica futura.
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+_MSG_VENDA_EFETIVADA = (
+    "Venda efetivada não pode ser alterada nem inativada. "
+    "Utilize futuramente a operação de cancelamento/estorno."
+)
 
 
 class VendaService:
@@ -108,6 +127,7 @@ class VendaService:
         self,
         dados: VendaCreate,
         itens: Optional[list[Any]] = None,
+        usuario_id: Optional[int] = None,
     ) -> Venda:
         """
         Cria venda, ItemVenda, baixa de estoque e MovimentoFinanceiro
@@ -117,7 +137,7 @@ class VendaService:
 
         itens_venda = self._resolver_itens(dados, itens)
 
-        venda = Venda(**dados.model_dump())
+        venda = Venda(**dados.model_dump(exclude={"itens"}))
 
         try:
             self.repository.db.add(venda)
@@ -167,6 +187,7 @@ class VendaService:
                     f"Venda {venda.id} criada. "
                     f"Número {venda.numero}."
                 ),
+                usuario_id=usuario_id,
             )
             return venda
 
@@ -187,38 +208,36 @@ class VendaService:
 
         return venda
 
-    def atualizar(self, venda_id: UUID, dados: VendaUpdate) -> Venda:
-        """Atualiza campos informados da venda (exclude_unset)."""
+    def atualizar(
+        self,
+        venda_id: UUID,
+        dados: VendaUpdate,
+        usuario_id: Optional[int] = None,
+    ) -> Venda:
+        """
+        Bloqueado para venda efetivada (Pacote 4.6.1).
+
+        Qualquer venda ativa já possui efeitos de itens, estoque e
+        financeiro aplicados na criação.
+        """
+        _ = dados, usuario_id
         venda = self.buscar_por_id(venda_id)
-        campos: dict[str, Any] = dados.model_dump(exclude_unset=True)
+        self._garantir_nao_efetivada(venda)
 
-        if "numero" in campos:
-            self._validar_numero_unico(
-                campos["numero"],
-                venda_id=venda_id,
-            )
+    def excluir(
+        self,
+        venda_id: UUID,
+        usuario_id: Optional[int] = None,
+    ) -> Venda:
+        """
+        Bloqueado para venda efetivada (Pacote 4.6.1).
 
-        for campo, valor in campos.items():
-            setattr(venda, campo, valor)
-
-        venda = self.repository.atualizar(venda)
-        self._registrar_auditoria(
-            acao="atualizar",
-            entidade_id=venda.id,
-            descricao=f"Venda {venda.id} atualizada.",
-        )
-        return venda
-
-    def excluir(self, venda_id: UUID) -> Venda:
-        """Realiza exclusão lógica da venda (ativo = False)."""
+        Soft delete sem estorno deixaria estoque e financeiro
+        inconsistentes.
+        """
+        _ = usuario_id
         venda = self.buscar_por_id(venda_id)
-        venda = self.repository.inativar(venda)
-        self._registrar_auditoria(
-            acao="inativar",
-            entidade_id=venda.id,
-            descricao=f"Venda {venda.id} inativada.",
-        )
-        return venda
+        self._garantir_nao_efetivada(venda)
 
     def relatorio_periodo(
         self,
@@ -265,6 +284,17 @@ class VendaService:
             "menor_venda": min(valores),
             "clientes_atendidos": clientes_atendidos,
         }
+
+    def _garantir_nao_efetivada(self, venda: Venda) -> None:
+        """
+        Impede update/delete de venda efetivada.
+
+        Venda ativa encontrada por buscar_por_id já passou pela criação
+        completa (itens + estoque + financeiro). Sem campo 'efetivado',
+        a existência ativa é o sinal de efetivação.
+        """
+        _ = venda
+        raise VendaJaEfetivada(_MSG_VENDA_EFETIVADA)
 
     def _validar_numero_unico(
         self,
@@ -334,14 +364,15 @@ class VendaService:
                     f"Saldo disponível: {saldo_disponivel}."
                 )
 
-            movimento_estoque = MovimentoEstoque(
-                data=venda.data_venda,
-                produto_id=item.produto_id,
-                quantidade=item.quantidade,
-                tipo=TipoMovimentoEstoque.SAIDA,
-                observacao=f"Venda {venda.numero}",
+            self.estoque_service.registrar(
+                MovimentoEstoqueCreate(
+                    data=venda.data_venda,
+                    produto_id=item.produto_id,
+                    quantidade=item.quantidade,
+                    tipo=TipoMovimentoEstoque.SAIDA,
+                    observacao=f"Venda {venda.numero}",
+                )
             )
-            self.repository.db.add(movimento_estoque)
 
             reservado[item.produto_id] = (
                 reservado.get(item.produto_id, Decimal("0"))
@@ -355,7 +386,16 @@ class VendaService:
         descricao: str,
         usuario_id: Optional[int] = None,
     ) -> None:
-        """Registra auditoria da operação de venda via AuditoriaService."""
+        """
+        Registra auditoria da operação de venda via AuditoriaService.
+
+        entidade_id permanece Integer no schema atual — UUID é truncado
+        para o campo numérico; o UUID completo fica na descricao.
+        Alterar o tipo exige migration futura (sem Alembic neste pacote).
+
+        Falha de auditoria não interrompe a operação comercial; sem
+        infraestrutura de logs no projeto, a falha permanece engolida.
+        """
         try:
             self.auditoria_service.registrar(
                 AuditoriaCreate(
@@ -363,6 +403,7 @@ class VendaService:
                     modulo="venda",
                     acao=acao,
                     entidade="Venda",
+                    # Truncamento legado até migration de entidade_id → string.
                     entidade_id=int(entidade_id.int % (2**31 - 1)),
                     descricao=descricao,
                 )

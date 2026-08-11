@@ -31,6 +31,26 @@ class CompraConcretoDuplicada(Exception):
         super().__init__(message)
 
 
+class CompraConcretoJaEfetivada(Exception):
+    """
+    Compra com efeitos aplicados não pode ser alterada nem inativada.
+
+    Efeitos (saldo e financeiro) ocorrem na criação; o saldo pode ter
+    sido consumido por Produções. Cancelamento/estorno fica para
+    operação específica futura.
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+_MSG_COMPRA_EFETIVADA = (
+    "Compra de concreto efetivada não pode ser alterada nem inativada. "
+    "Utilize futuramente a operação de cancelamento/estorno."
+)
+
+
 class CompraConcretoService:
     """Regras de negócio do cadastro de compras de concreto."""
 
@@ -111,25 +131,35 @@ class CompraConcretoService:
         compra_id: int,
         dados: CompraConcretoUpdate,
     ) -> CompraConcreto:
-        """Atualiza campos informados da compra (exclude_unset)."""
+        """
+        Bloqueado para compra efetivada (Pacote 4.6.3).
+
+        Qualquer compra ativa já possui saldo e financeiro aplicados
+        na criação; o saldo pode ter sido consumido por Produções.
+        """
+        _ = dados
         compra = self.buscar_por_id(compra_id)
-        campos: dict[str, Any] = dados.model_dump(exclude_unset=True)
-
-        if "nota_fiscal" in campos:
-            self._validar_nota_fiscal_unica(
-                campos["nota_fiscal"],
-                compra_id=compra_id,
-            )
-
-        for campo, valor in campos.items():
-            setattr(compra, campo, valor)
-
-        return self.repository.atualizar(compra)
+        self._garantir_nao_efetivada(compra)
 
     def excluir(self, compra_id: int) -> CompraConcreto:
-        """Realiza exclusão lógica da compra (ativo = False)."""
+        """
+        Bloqueado para compra efetivada (Pacote 4.6.3).
+
+        Soft delete sem estorno deixaria financeiro e saldos
+        (e Produções dependentes) inconsistentes.
+        """
         compra = self.buscar_por_id(compra_id)
-        return self.repository.inativar(compra)
+        self._garantir_nao_efetivada(compra)
+
+    def _garantir_nao_efetivada(self, compra: CompraConcreto) -> None:
+        """
+        Impede update/delete de compra efetivada.
+
+        Compra ativa encontrada por buscar_por_id já passou pela
+        criação completa (saldo + financeiro).
+        """
+        _ = compra
+        raise CompraConcretoJaEfetivada(_MSG_COMPRA_EFETIVADA)
 
     def _validar_nota_fiscal_unica(
         self,
